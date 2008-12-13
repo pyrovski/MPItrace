@@ -1,0 +1,19 @@
+# ignore the following files.
+
+# Regular object files.
+*.o
+
+# Binaries
+harness
+harness_pristine
+
+# vim 
+.*.swp
+
+# runtime files
+*runtime*
+ping.eager
+ping.normal
+
+# MPI files
+hostfile
