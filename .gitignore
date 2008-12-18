@@ -9,11 +9,13 @@ harness_pristine
 
 # vim 
 .*.swp
+*~
 
 # runtime files
 *runtime*
 ping.eager
 ping.normal
+spin.*
 
 # MPI files
 hostfile
