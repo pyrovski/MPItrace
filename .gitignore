@@ -2,6 +2,7 @@
 
 # Regular object files.
 *.o
+*.so
 
 # Binaries
 harness
