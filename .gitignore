@@ -26,3 +26,4 @@ hostfile
 
 installPath
 TAGS
+*.core
