@@ -27,3 +27,4 @@ hostfile
 installPath
 TAGS
 *.core
+*.bz2
