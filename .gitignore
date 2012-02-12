@@ -23,8 +23,12 @@ spin.*
 # MPI files
 hostfile
 
-
 installPath
 TAGS
 *.core
 *.bz2
+
+*.dat
+*.out
+shim_functions.c
+shim_enumeration.h
