@@ -6,4 +6,5 @@ readRuntime = function(filename){
   a[dest == -1,]$dest = NA
   a[src == -1,]$src = NA
   a[comm == 0,]$comm = NA
+  ##!@todo convert request list from string to R list
 }
