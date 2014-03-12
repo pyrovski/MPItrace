@@ -1,10 +1,38 @@
 #!/usr/bin/env Rscript
 
+library('data.table')
+source('~/local/bin/pbutils.R')
+
 readRuntime = function(filename){
-  a = data.table(read.table(filename,h=T,stringsAsFactors=F))
+  firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
+  colClasses = c(
+    start='numeric',
+    duration='numeric',
+    name='character',
+    size='integer',
+    dest='integer',
+    src='integer',
+    tag='integer',
+    comm='character',
+    hash='character',
+    pkg_w='numeric',
+    pp0_w='numeric',
+    dram_w='numeric',
+    reqs='character')
+  a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
   a[size == -1,]$size = NA
   a[dest == -1,]$dest = NA
   a[src == -1,]$src = NA
-  a[comm == 0,]$comm = NA
-  ##!@todo convert request list from string to R list
+  a$reqs = strsplit(a$reqs,',')
+  return(a)
+}
+
+readAll = function(path='.'){
+  files = sort(list.files(path,'runtime.*.dat'))
+  ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
+  result = lapply(files, readRuntime)
+  names(result) = ranks
+  result = napply(result, function(x, name){x$rank = name;x})
+  result = rbindlist(result)
+  return(result)
 }
