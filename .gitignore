@@ -33,3 +33,4 @@ TAGS
 shim_functions.c
 shim_enumeration.h
 localConfig
+.R*
