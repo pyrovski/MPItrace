@@ -23,6 +23,7 @@ readRuntime = function(filename){
   a[size == -1,]$size = NA
   a[dest == -1,]$dest = NA
   a[src == -1,]$src = NA
+  a[is.na(size)][tag == -1]$tag = NA
   a$reqs = strsplit(a$reqs,',')
   return(a)
 }
@@ -32,7 +33,11 @@ readAll = function(path='.'){
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
   result = lapply(files, readRuntime)
   names(result) = ranks
-  result = napply(result, function(x, name){x$rank = name;x})
+  result = napply(result, function(x, name){x$rank = as.numeric(name);x})
   result = rbindlist(result)
   return(result)
+}
+
+deps = function(x){
+  
 }
