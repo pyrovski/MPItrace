@@ -145,7 +145,7 @@ deps = function(x){
       ## for each request sink, find its source
       sinkIndex = 1
       for(req in sinkReqs){
-        if(debug)
+        if(debug && !(sinkIndex %% 100))
           cat('Sink request', sinkIndex, 'of', length(sinkReqs), '\n')
         reqFound =
           sinks[sapply(x[sinks]$reqs, function(x) req %in% x)]
