@@ -22,6 +22,16 @@ MPI_collectives = c(
   'MPI_Scan',
   'MPI_File_write_at_all')
 
+MPI_req_sinks =
+  c('MPI_Wait', 'MPI_Waitall', 'MPI_Waitsome',
+    'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
+    'MPI_Request_free', 'MPI_Start', 'MPI_Startall')
+
+MPI_req_sources =
+  c('MPI_Isend','MPI_Irecv','MPI_Irsend','MPI_Bsend_init',
+    'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init',
+    'MPI_Recv_init')
+
 readRuntime = function(filename){
   firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
   colClasses = c(
@@ -60,6 +70,7 @@ readAll = function(path='.'){
 
 deps = function(x){
   x$vertex = as.numeric(NA)
+  x$deps = as.numeric(NA)
 
   ## init and finalize
   init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
@@ -95,7 +106,22 @@ deps = function(x){
     vid = vid + vidInc
   }
 
-  ## handle blocking receives and waits, and nonblocking successful tests
+  ## get backrefs for blocking receives and waits,
+  ## nonblocking successful tests, and request frees
+  for(rank in ranks){
+    waits =
+      x[rank == rank &
+        name %in% MPI_req_sinks,
+        which=T]
+    ## only entries with requests
+    waits =
+      intersect(waits,
+                which(sapply(x$reqs, function(x) !all(is.na(x)))))
+    
+    ## for each request, find its origin
+
+    ## double-link sinks and sources for later matching of messages
+  }
   
   return(list(table=x, graph=g))
 }
