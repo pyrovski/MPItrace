@@ -146,11 +146,9 @@ deps = function(x){
       sinkIndex = 1
       for(req in sinkReqs){
         if(debug)
-          cat('Sink request ', sinkIndex, 'of', length(sinkReqs), '\n')
+          cat('Sink request', sinkIndex, 'of', length(sinkReqs), '\n')
         reqFound =
-          intersect(
-            which(sapply(x$reqs, function(x) req %in% x)),
-            sinks)
+          sinks[sapply(x[sinks]$reqs, function(x) req %in% x)]
         sourced = F
         for(i in reqFound){
           if(x[i]$name %in% MPI_req_sources){
