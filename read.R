@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 
+debug=T
+
 library('data.table')
 source('~/local/bin/pbutils.R')
 
@@ -25,7 +27,7 @@ MPI_collectives = c(
 MPI_req_sinks =
   c('MPI_Wait', 'MPI_Waitall', 'MPI_Waitsome',
     'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
-    'MPI_Request_free', 'MPI_Start', 'MPI_Startall')
+    'MPI_Request_free')
 
 MPI_req_sources =
   c('MPI_Isend','MPI_Irecv','MPI_Irsend','MPI_Bsend_init',
@@ -70,7 +72,9 @@ readAll = function(path='.'){
 
 deps = function(x){
   x$vertex = as.numeric(NA)
-  x$deps = as.numeric(NA)
+  x$deps = vector('list', nrow(x))
+  x$brefs = vector('list', nrow(x))
+  x$fref = as.numeric(NA)
 
   ## init and finalize
   init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
@@ -92,6 +96,8 @@ deps = function(x){
   }
 
   ## collectives
+  if(debug)
+    cat('Collectives\n')
   collectives = intersect(x$name, setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
   
   setkey(x, name, comm, rank)
@@ -108,21 +114,60 @@ deps = function(x){
 
   ## get backrefs for blocking receives and waits,
   ## nonblocking successful tests, and request frees
+  if(debug)
+    cat('Requests\n')
   for(rank in ranks){
-    waits =
+    if(debug)
+      cat('Rank ', rank, '\n')
+    sources =
+      x[rank == rank &
+        name %in% MPI_req_sources,
+        which=T]
+    ## only entries with requests
+    sources =
+      intersect(sources,
+                which(sapply(x$reqs, function(x) !all(is.na(x)))))
+    
+    sinks =
       x[rank == rank &
         name %in% MPI_req_sinks,
         which=T]
     ## only entries with requests
-    waits =
-      intersect(waits,
+    sinks =
+      intersect(sinks,
                 which(sapply(x$reqs, function(x) !all(is.na(x)))))
-    
-    ## for each request, find its origin
 
-    ## double-link sinks and sources for later matching of messages
+    reqs = sort(c(sinks, sources))
+
+    if(length(sinks)){
+      sinkReqs = unique(unlist(x[sinks]$reqs))
+      
+      ## for each request sink, find its source
+      sinkIndex = 1
+      for(req in sinkReqs){
+        if(debug)
+          cat('Sink request ', sinkIndex, 'of', length(sinkReqs), '\n')
+        reqFound =
+          intersect(
+            which(sapply(x$reqs, function(x) req %in% x)),
+            sinks)
+        sourced = F
+        for(i in reqFound){
+          if(x[i]$name %in% MPI_req_sources){
+            sourced = T
+            last = i
+          } else if(sourced){ ## sink
+            x[i]$brefs = union(unlist(x[i]$brefs), last)
+            x[last]$fref = i
+            sourced = F
+          }
+        }
+        sinkIndex = sinkIndex + 1
+      }
+      ## double-link sinks and sources for later matching of messages
+    }
   }
-  
-  return(list(table=x, graph=g))
-}
 
+  return(x)
+  ##return(list(table=x, graph=g))
+}
