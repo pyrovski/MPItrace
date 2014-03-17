@@ -72,25 +72,35 @@ readAll = function(path='.'){
 }
 
 ## single rank only!
-.deps = function(x){
-  x$vertex = as.numeric(NA)
-  x$deps = vector('list', nrow(x))
-  x$brefs = vector('list', nrow(x))
-  x$fref = as.numeric(NA)
-
-  ##!@todo parse list of communicators and their members
-  ## sequential dependencies per rank
+.deps = function(x, maxRank){
   ranks = unique(x$rank)
   if(length(ranks) > 1)
     stop('Too many ranks in deps()!')
 
+  rank = ranks
+  rm(ranks)
+
+  x$vertex = as.numeric(NA)
+
+  # numeric for now, list later
+  x$deps = as.numeric(NA)
+  x$brefs = vector('list', nrow(x))
+  x$fref = as.numeric(NA)
+  x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
+
+  ##!@todo add unique id to each row
+
+  ##!@todo parse list of communicators and their members
+
+  ## sequential dependencies
+
   rows = 1:nrow(x)
-  x$deps[tail(rows, -1)] = head(rows, -1)
+  x$deps[tail(rows, -1)] = x$uid[head(rows, -1)]
 
   ## get backrefs for blocking receives and waits,
   ## nonblocking successful tests, and request frees
   if(debug)
-    cat('Rank', ranks, 'requests\n')
+    cat('Rank', rank, 'requests\n')
   sources =
     x[name %in% MPI_req_sources, which=T]
   ## only entries with requests
@@ -115,10 +125,10 @@ readAll = function(path='.'){
     sinkIndex = 1
     for(req in sinkReqs){
       if(debug && !(sinkIndex %% 100))
-        cat('Rank', ranks, 'sink request', sinkIndex, 'of', length(sinkReqs), '\n')
+        cat('Rank', rank, 'sink request', sinkIndex, 'of', length(sinkReqs), '\n')
       reqFound =
         reqs[sapply(x[reqs]$reqs, function(x) req %in% x)]
-###      cat('Rank', ranks, 'reqFound:', reqFound, '\n')
+###      cat('Rank', rank, 'reqFound:', reqFound, '\n')
       sourced = F
       for(i in reqFound){
         if(x[i]$name %in% MPI_req_sources){
@@ -126,10 +136,10 @@ readAll = function(path='.'){
           last = i
         } else if(sourced){ ## sink
 ###          if(debug)
-###            cat('Rank', ranks, 'link:', last, 'to', i, '\n')
+###            cat('Rank', rank, 'link:', last, 'to', i, '\n')
           ##!@todo fix multiple assignment
-          x[i]$brefs = union(unlist(x[i]$brefs), last)
-          x[last]$fref = i
+          x[i]$brefs = union(unlist(x[i]$brefs), x$uid[last])
+          x[last]$fref = x$uid[i]
           sourced = F
         }
       }
@@ -141,19 +151,34 @@ readAll = function(path='.'){
 }
 
 deps = function(x){
+  ranks = sapply(x, function(x) unique(x$rank))
+
   ##if(debug)
-  ##  x = lapply(x, .deps)
+  ##  x = lapply(x, .deps, max(ranks))
   ##else
-    x = mclapply(x, .deps)
+    x = mclapply(x, .deps, maxRank=max(ranks))
 
   ## merge tables
-  ##!@todo adjust indices for dpes, bref, and fref 
+  ##!@todo adjust indices for dpes, bref, and fref
+  ##!@todo order by topological sort after all dependecies done
   x = rbindlist(x)[order(start)]
   
-  ranks = unique(x$rank)
-  
-  ## collectives
+  ## remap uids
+  newUIDs = as.list(1:nrow(x))
+  names(newUIDs) = x$uid
+  x$uid = unlist(newUIDs[as.character(x$uid)])
 
+  sel = x[!is.na(fref), which=T]
+  x$fref[sel] = unlist(newUIDs[as.character(x$fref[sel])])
+
+  sel = x[!is.na(deps), which=T]
+  x$deps[sel] = newUIDs[as.character(x$deps[sel])]
+  
+  sel = which(!sapply(x$brefs, is.null))
+  ##!@todo speed this up
+  x$brefs[sel] = sapply(x$brefs[sel], function(x)unname(newUIDs[sapply(x,as.character)]))
+
+  ## collectives
   ## init and finalize
   init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
   finalize = which(x$name == 'MPI_Finalize')
@@ -180,6 +205,8 @@ deps = function(x){
     }
     vid = vid + vidInc
   }
+
+  ##!@todo match inter-rank messages
   
   return(x)
   ##return(list(table=x, graph=g))
