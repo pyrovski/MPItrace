@@ -88,8 +88,6 @@ readAll = function(path='.'){
   x$fref = as.numeric(NA)
   x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
 
-  ##!@todo add unique id to each row
-
   ##!@todo parse list of communicators and their members
 
   ## sequential dependencies
@@ -135,11 +133,16 @@ readAll = function(path='.'){
           sourced = T
           last = i
         } else if(sourced){ ## sink
-###          if(debug)
-###            cat('Rank', rank, 'link:', last, 'to', i, '\n')
+          ## if(debug){
+          ##   cat('Rank', rank, 'link:', last, 'to', i, '\n')
+          ##   cat('Rank', rank, 'brefs before adding', x$uid[last],':', unlist(x[i]$brefs), '\n')
+          ## }
           ##!@todo fix multiple assignment
-          x[i]$brefs = union(unlist(x[i]$brefs), x$uid[last])
+          x$brefs[[i]] = union(unlist(x[i]$brefs), x$uid[last])
           x[last]$fref = x$uid[i]
+          ## if(debug){
+          ##   cat('Rank', rank, 'brefs after:', unlist(x[i]$brefs), '\n')
+          ## }
           sourced = F
         }
       }
@@ -153,13 +156,12 @@ readAll = function(path='.'){
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
 
-  ##if(debug)
-  ##  x = lapply(x, .deps, max(ranks))
-  ##else
+  ## if(debug)
+  ##   x = lapply(x, .deps, max(ranks))
+  ## else
     x = mclapply(x, .deps, maxRank=max(ranks))
 
   ## merge tables
-  ##!@todo adjust indices for dpes, bref, and fref
   ##!@todo order by topological sort after all dependecies done
   x = rbindlist(x)[order(start)]
   
@@ -176,7 +178,7 @@ deps = function(x){
   
   sel = which(!sapply(x$brefs, is.null))
   ##!@todo speed this up
-  x$brefs[sel] = sapply(x$brefs[sel], function(x)unname(newUIDs[sapply(x,as.character)]))
+  x$brefs[sel] = sapply(x$brefs[sel], function(x)unlist(unname(newUIDs[sapply(x,as.character)])))
 
   ## collectives
   ## init and finalize
@@ -207,6 +209,9 @@ deps = function(x){
   }
 
   ##!@todo match inter-rank messages
+
+  ##!@todo add vertices for intra-rank stuff
+  ##!@todo decide how to handle collectives (decompose, etc.)
   
   return(x)
   ##return(list(table=x, graph=g))
