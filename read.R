@@ -59,9 +59,9 @@ readRuntime = function(filename){
   a[size == MPI_UNDEFINED,]$size = NA
   a[dest == MPI_UNDEFINED,]$dest = NA
   a[src == MPI_UNDEFINED,]$src = NA
-  a[is.na(size)][tag == MPI_UNDEFINED]$tag = NA
+  a[tag == MPI_UNDEFINED]$tag = NA
   a$reqs = strsplit(a$reqs,',')
-  a[comm == '0x0',comm:='']
+  a[comm == '(nil)',comm:='']
   return(a)
 }
 
@@ -153,7 +153,6 @@ readAll = function(path='.'){
       sinkIndex = sinkIndex + 1
     }
   }
-
   return(x)
 }
 
