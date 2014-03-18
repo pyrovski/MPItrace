@@ -35,6 +35,10 @@ MPI_req_sources =
     'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init',
     'MPI_Recv_init')
 
+readGlobal = function(filename = "glog.dat"){
+  eval(parse(filename), envir=.GlobalEnv)
+}
+
 readRuntime = function(filename){
   firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
   colClasses = c(
@@ -52,10 +56,10 @@ readRuntime = function(filename){
     dram_w='numeric',
     reqs='character')
   a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
-  a[size == -1,]$size = NA
-  a[dest == -1,]$dest = NA
-  a[src == -1,]$src = NA
-  a[is.na(size)][tag == -1]$tag = NA
+  a[size == MPI_UNDEFINED,]$size = NA
+  a[dest == MPI_UNDEFINED,]$dest = NA
+  a[src == MPI_UNDEFINED,]$src = NA
+  a[is.na(size)][tag == MPI_UNDEFINED]$tag = NA
   a$reqs = strsplit(a$reqs,',')
   a[comm == '0x0',comm:='']
   return(a)
