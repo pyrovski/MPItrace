@@ -166,6 +166,69 @@ readAll = function(path='.'){
   return(x)
 }
 
+messageDeps = function(x){
+  ##!@todo match inter-rank messages. Messages (excluding
+  ## MPI_ANY_SOURCE and MPI_ANY_TAG) are uniquely identified by the
+  ## following: source, destination, size, tag, communicator, and
+  ## order.  For MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag
+  ## and source at run time.
+
+  mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
+  mids = mids[complete.cases(mids)]
+
+  ##!@warning side effects
+  f = function(s, r){
+    if(!is.na(r$reqs) && length(r$reqs) > 0)
+      dest = r$fref
+    else
+      dest = r$uid
+    ## s$uid, dest=dest))
+    x$deps[x$uid == dest][[1]] = c(x$deps[x$uid == dest][[1]], s$uid)
+  }
+
+  f_noSideEffects = function(s, r){
+    if(!is.na(r$reqs) && length(r$reqs) > 0)
+      dest = r$fref
+    else
+      dest = r$uid
+    return(list(src=s$uid, dest=dest))
+  }
+  
+  setkey(x, src, dest, size, tag, comm)
+  srDeps = rbindlist(mclapply(1:nrow(mids), function(mid){
+    matching = x[mids[mid]][order(uid)]
+    sends = matching[name %in% MPI_Sends]
+    recvs = matching[name %in% MPI_Recvs]
+    if(debug)
+      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
+    ## if a receive has a request, the send dependency leads to the
+    ## matching wait, test, or free
+    if(nrow(sends) != nrow(recvs))
+      stop('mismatched send-receive:', mids[mid])
+    
+    result =
+      lapply(1:nrow(sends), function(row) f_noSideEffects(sends[row], recvs[row]))
+    result = as.data.frame(do.call(rbind, result))
+    names(result) = c('src', 'dest')
+    return(result)
+  }))
+  srDeps = as.data.table(lapply(srDeps, unlist))
+  
+  if(debug)
+    cat('Done finding message matches\n')
+
+  setkey(x, uid)
+  x[srDeps$dest]$deps = mapply(c, x[srDeps$dest]$deps, srDeps$src, SIMPLIFY=F)
+  
+  if(debug)
+    cat('Done matching messages\n')
+  ##!@todo process srDeps
+  
+  ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
+
+  return(x)
+}
+
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
 
@@ -227,49 +290,5 @@ deps = function(x){
   x[is.na(vertex), vertex:=vid+(0:(nrow(.SD)-1))]
   vid = max(x$vertex, na.rm=T) + 1
 
-  ##!@todo match inter-rank messages. Messages (excluding
-  ## MPI_ANY_SOURCE and MPI_ANY_TAG) are uniquely identified by the
-  ## following: source, destination, size, tag, communicator, and
-  ## order.  For MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag
-  ## and source at run time.
-
-  mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
-  mids = mids[complete.cases(mids)]
-
-  ##!@warning side effects
-  f = function(s, r){
-    if(length(r$reqs) > 0)
-      dest = r$fref
-    else
-      dest = r$uid
-    ## s$uid, dest=dest))
-    x$deps[x$uid == dest][[1]] = c(x$deps[x$uid == dest][[1]], s$uid)
-  }
-
-  f_noSideEffects = function(s, r){
-    if(length(r$reqs) > 0)
-      dest = r$fref
-    else
-      dest = r$uid
-    return(src=s$uid, dest=dest)
-  }
-  
-  setkey(x, src, dest, size, tag, comm)
-  lapply(1:nrow(mids), function(mid){
-    matching = x[mids[mid]][order(uid)]
-    sends = matching[name %in% MPI_Sends]
-    recvs = matching[name %in% MPI_Recvs]
-    if(debug)
-      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
-    ## if a receive has a request, the send dependency leads to the
-    ## matching wait, test, or free
-    if(nrow(sends) != nrow(recvs))
-      stop('mismatched send-receive:', mids[mid])
-    
-    lapply(1:nrow(sends), function(row) f(sends[row], recvs[row]))
-  })
-  
-  ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
-  
   return(x)
 }
