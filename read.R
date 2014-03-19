@@ -236,20 +236,31 @@ deps = function(x){
   mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
   mids = mids[complete.cases(mids)]
 
+  ##!@warning side effects
   f = function(s, r){
     if(length(r$reqs) > 0)
       dest = r$fref
     else
       dest = r$uid
-    return(list(src=s$uid, dest=dest))
+    ## s$uid, dest=dest))
+    x$deps[x$uid == dest][[1]] = c(x$deps[x$uid == dest][[1]], s$uid)
   }
-  debug(f)
+
+  f_noSideEffects = function(s, r){
+    if(length(r$reqs) > 0)
+      dest = r$fref
+    else
+      dest = r$uid
+    return(src=s$uid, dest=dest)
+  }
   
   setkey(x, src, dest, size, tag, comm)
-  srDeps = lapply(1:nrow(mids), function(mid){
+  lapply(1:nrow(mids), function(mid){
     matching = x[mids[mid]][order(uid)]
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
+    if(debug)
+      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
     ## if a receive has a request, the send dependency leads to the
     ## matching wait, test, or free
     if(nrow(sends) != nrow(recvs))
