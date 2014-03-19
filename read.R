@@ -104,15 +104,21 @@ readAll = function(path='.'){
   x$vertex = as.numeric(NA)
 
   # numeric for now, list later
+  ## deps: predecessors
   x$deps = as.numeric(NA)
+
+  ## brefs: request sources
   x$brefs = vector('list', nrow(x))
+
+  ## fref: request sink
   x$fref = as.numeric(NA)
+
+  ## uid: unique identifier
   x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
 
   ##!@todo parse list of communicators and their members
 
   ## sequential dependencies
-
   rows = 1:nrow(x)
   x$deps[tail(rows, -1)] = x$uid[head(rows, -1)]
 
@@ -167,11 +173,11 @@ readAll = function(path='.'){
 }
 
 messageDeps = function(x){
-  ##!@todo match inter-rank messages. Messages (excluding
-  ## MPI_ANY_SOURCE and MPI_ANY_TAG) are uniquely identified by the
-  ## following: source, destination, size, tag, communicator, and
-  ## order.  For MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag
-  ## and source at run time.
+  ## match inter-rank messages. Messages (excluding MPI_ANY_SOURCE and
+  ## MPI_ANY_TAG) are uniquely identified by the following: source,
+  ## destination, size, tag, communicator, and order.  For
+  ## MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag and source at
+  ## run time.
 
   mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
   mids = mids[complete.cases(mids)]
@@ -195,7 +201,8 @@ messageDeps = function(x){
   }
   
   setkey(x, src, dest, size, tag, comm)
-  srDeps = rbindlist(mclapply(1:nrow(mids), function(mid){
+  ## rbindlist makes shitty data tables?
+  srDeps = mclapply(1:nrow(mids), function(mid){
     matching = x[mids[mid]][order(uid)]
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
@@ -211,19 +218,35 @@ messageDeps = function(x){
     result = as.data.frame(do.call(rbind, result))
     names(result) = c('src', 'dest')
     return(result)
-  }))
+  })
+  ## this is slower than rbindlist, but doesn't segfault
+  srDeps = do.call(rbind, srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
   
   if(debug)
     cat('Done finding message matches\n')
 
   setkey(x, uid)
-  x[srDeps$dest]$deps = mapply(c, x[srDeps$dest]$deps, srDeps$src, SIMPLIFY=F)
-  
+  ## find indices with multiple references
+  setkey(srDeps, dest)
+  destRLE = rle(srDeps$dest)
+  multDests = destRLE$values[destRLE$lengths > 1]
+
+  ## complete the indices with single references
+  sel = setdiff(srDeps$dest, multDests)
+  if(length(sel))
+    x[sel]$deps = mapply(c, x[sel]$deps, srDeps[sel]$src, SIMPLIFY=F)
+
+  ## complete the indices with multiple references
+  if(length(multDests))
+    x[multDests]$deps =
+      mapply(c, x[multDests]$deps,
+             lapply(multDests,
+                    function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    
   if(debug)
     cat('Done matching messages\n')
-  ##!@todo process srDeps
-  
+
   ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
 
   return(x)
@@ -255,7 +278,7 @@ deps = function(x){
   sel = which(!sapply(x$brefs, is.null))
   ##!@todo speed this up
   x$brefs[sel] =
-    sapply(x$brefs[sel], function(x)
+    lapply(x$brefs[sel], function(x)
            unlist(unname(newUIDs[sapply(x,as.character)])))
   
   ## collectives
@@ -274,7 +297,7 @@ deps = function(x){
     cat('Collectives\n')
   collectives = intersect(x$name, setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
   
-  setkey(x, name, comm)
+  setkey(x, name, comm, rank)
   for(a_coll in collectives){
     instances = which(x$name == a_coll)
     u = unique(x[instances, list(name, comm)])
@@ -291,4 +314,8 @@ deps = function(x){
   vid = max(x$vertex, na.rm=T) + 1
 
   return(x)
+}
+
+tsort = function(x){
+  
 }
