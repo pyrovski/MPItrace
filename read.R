@@ -35,8 +35,16 @@ MPI_req_sources =
     'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init',
     'MPI_Recv_init')
 
+MPI_Sends =
+  c('MPI_Send', 'MPI_Isend', 'MPI_Issend', 'MPI_Bsend', 'MPI_Rsend',
+    'MPI_Irsend', 'MPI_Ibsend', 'MPI_Ssend', 'MPI_Rsend_init',
+    'MPI_Ssend_init', 'MPI_Bsend_init', 'MPI_Send_init')
+
+MPI_Recvs =
+  c('MPI_Recv', 'MPI_Irecv', 'MPI_Recv_init')
+
 readGlobal = function(filename = "glog.dat"){
-  eval(parse(filename), envir=.GlobalEnv)
+  source(filename)
 }
 
 readRuntime = function(filename){
@@ -84,6 +92,11 @@ readAll = function(path='.'){
   rank = ranks
   rm(ranks)
 
+  ## process ANY_SOURCE and ANY_TAG entries
+  ##!@todo preserve ANY_SOURCE and ANY_TAG in new columns?
+  sel = x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG
+  x = x[!sel]
+  
   x$vertex = as.numeric(NA)
 
   # numeric for now, list later
@@ -137,16 +150,8 @@ readAll = function(path='.'){
           sourced = T
           last = i
         } else if(sourced){ ## sink
-          ## if(debug){
-          ##   cat('Rank', rank, 'link:', last, 'to', i, '\n')
-          ##   cat('Rank', rank, 'brefs before adding', x$uid[last],':', unlist(x[i]$brefs), '\n')
-          ## }
-          ##!@todo fix multiple assignment
           x$brefs[[i]] = union(unlist(x[i]$brefs), x$uid[last])
           x[last]$fref = x$uid[i]
-          ## if(debug){
-          ##   cat('Rank', rank, 'brefs after:', unlist(x[i]$brefs), '\n')
-          ## }
           sourced = F
         }
       }
@@ -181,8 +186,10 @@ deps = function(x){
   
   sel = which(!sapply(x$brefs, is.null))
   ##!@todo speed this up
-  x$brefs[sel] = sapply(x$brefs[sel], function(x)unlist(unname(newUIDs[sapply(x,as.character)])))
-
+  x$brefs[sel] =
+    sapply(x$brefs[sel], function(x)
+           unlist(unname(newUIDs[sapply(x,as.character)])))
+  
   ## collectives
   ## init and finalize
   init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
@@ -211,11 +218,14 @@ deps = function(x){
     vid = vid + vidInc
   }
 
-  ##!@todo match inter-rank messages
+  ##!@todo match inter-rank messages messages (excluding
+  ## MPI_ANY_SOURCE and MPI_ANY_TAG) are uniquely identified by the
+  ## following: source, destination, size, tag, communicator, and
+  ## order.  For MPI_ANY_SOURCE and MPI_ANY_TAG, we can record the tag
+  ## and source at run time.
 
   ##!@todo add vertices for intra-rank stuff
   ##!@todo decide how to handle collectives (decompose, etc.)
   
   return(x)
-  ##return(list(table=x, graph=g))
 }
