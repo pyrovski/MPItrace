@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 
+source('~/local/bin/pbutils.R')
+
 debug=T
 
 library('data.table')
@@ -33,7 +35,7 @@ MPI_req_sinks =
 MPI_req_sources =
   c('MPI_Isend','MPI_Irecv','MPI_Irsend','MPI_Bsend_init',
     'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init',
-    'MPI_Recv_init')
+    'MPI_Recv_init', 'MPI_Ibsend', 'MPI_Issend')
 
 MPI_Sends =
   c('MPI_Send', 'MPI_Isend', 'MPI_Issend', 'MPI_Bsend', 'MPI_Rsend',
@@ -160,6 +162,7 @@ readAll = function(path='.'){
       sinkIndex = sinkIndex + 1
     }
   }
+  cat('Rank', rank, 'done\n')
   return(x)
 }
 
@@ -220,14 +223,42 @@ deps = function(x){
     vid = vid + vidInc
   }
 
-  ##!@todo match inter-rank messages messages (excluding
+  ## add vertices for intra-rank stuff
+  x[is.na(vertex), vertex:=vid+(0:(nrow(.SD)-1))]
+  vid = max(x$vertex, na.rm=T) + 1
+
+  ##!@todo match inter-rank messages. Messages (excluding
   ## MPI_ANY_SOURCE and MPI_ANY_TAG) are uniquely identified by the
   ## following: source, destination, size, tag, communicator, and
-  ## order.  For MPI_ANY_SOURCE and MPI_ANY_TAG, we can record the tag
+  ## order.  For MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag
   ## and source at run time.
 
-  ##!@todo add vertices for intra-rank stuff
-  ##!@todo decide how to handle collectives (decompose, etc.)
+  mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
+  mids = mids[complete.cases(mids)]
+
+  f = function(s, r){
+    if(length(r$reqs) > 0)
+      dest = r$fref
+    else
+      dest = r$uid
+    return(list(src=s$uid, dest=dest))
+  }
+  debug(f)
+  
+  setkey(x, src, dest, size, tag, comm)
+  srDeps = lapply(1:nrow(mids), function(mid){
+    matching = x[mids[mid]][order(uid)]
+    sends = matching[name %in% MPI_Sends]
+    recvs = matching[name %in% MPI_Recvs]
+    ## if a receive has a request, the send dependency leads to the
+    ## matching wait, test, or free
+    if(nrow(sends) != nrow(recvs))
+      stop('mismatched send-receive:', mids[mid])
+    
+    lapply(1:nrow(sends), function(row) f(sends[row], recvs[row]))
+  })
+  
+  ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
   
   return(x)
 }
