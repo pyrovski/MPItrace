@@ -92,9 +92,11 @@ readAll = function(path='.'){
   rank = ranks
   rm(ranks)
 
-  ## process ANY_SOURCE and ANY_TAG entries
+  ##! process ANY_SOURCE and ANY_TAG entries
   ##!@todo preserve ANY_SOURCE and ANY_TAG in new columns?
   sel = x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG
+  ##!@todo for replay, we need to know both the ANY_SOURCE for
+  ##! matching and the actual source to post the PMPI receive.
   x = x[!sel]
   
   x$vertex = as.numeric(NA)
