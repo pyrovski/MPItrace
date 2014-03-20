@@ -168,6 +168,7 @@ readAll = function(path='.'){
       sinkIndex = sinkIndex + 1
     }
   }
+  x[,reqs:=NULL]
   cat('Rank', rank, 'done\n')
   return(x)
 }
@@ -234,15 +235,23 @@ messageDeps = function(x){
 
   ## complete the indices with single references
   sel = setdiff(srDeps$dest, multDests)
-  if(length(sel))
-    x[sel]$deps = mapply(c, x[sel]$deps, srDeps[sel]$src, SIMPLIFY=F)
+  if(length(sel)){
+    d = x$deps
+    d[x[J(sel), which=T]] = mapply(c, d[x[J(sel), which=T]], srDeps[J(sel)]$src, SIMPLIFY=F)
+    x$deps = d
+    rm(d)
+  }
 
   ## complete the indices with multiple references
-  if(length(multDests))
-    x[multDests]$deps =
-      mapply(c, x[multDests]$deps,
+  if(length(multDests)){
+    d = x$deps
+    d[x[j(multDests), which=T]] =
+      mapply(c, d[x[J(multDests), which=T]],
              lapply(multDests,
                     function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    x$deps = d
+    rm(d)
+  }
     
   if(debug)
     cat('Done matching messages\n')
@@ -316,6 +325,30 @@ deps = function(x){
   return(x)
 }
 
-tsort = function(x){
+### vertices and edges with attributes.
+tableToGraph = function(x){
+  ## For the vertex frame, column 1 is the vertex name.
+  vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
+  setcolorder(vertices, c('vertex', setdiff(names(vertices), 'vertex')))
+  setkey(vertices, vertex)
+  vRLE = rle(vertices$vertex)
+  single = vRLE$values[vRLE$lengths == 1]
+  multiple = vRLE$values[vRLE$lengths > 1]
+  vertices = unique(vertices)
+
+  ## For the edge list frame, column 1 is the source, and column 2 is the destination.
+  setkey(x, uid)
+  sel = x$uid[which(!is.na(x$deps))]
+  edges =
+    rbindlist(lapply(sel, function(u)
+                     rbindlist(lapply(x[J(u)]$deps, function(d)
+                                      data.frame(src=x[J(d)]$vertex,dest=x[J(u)]$vertex)
+                                      )
+                               )
+                     )
+              )
   
+  g = graph.data.frame(edges, vertices=vertices)
+  
+  return(g)
 }
