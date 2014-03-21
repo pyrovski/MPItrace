@@ -259,8 +259,6 @@ messageDeps = function(x){
   if(debug)
     cat('Done matching messages\n')
 
-  ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
-
   return(x)
 }
 
@@ -330,6 +328,12 @@ deps = function(x){
 
 ### vertices and edges with attributes.
 tableToGraph = function(x){
+  ##!@todo replace computation vertices with weighted edges
+
+  ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
+
+  ##!@todo add edge weights to communication edges
+  
   ## For the vertex frame, column 1 is the vertex name.
   ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
   vertices = x[, list(name, rank, vertex)]
