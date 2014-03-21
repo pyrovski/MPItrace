@@ -6,6 +6,7 @@ debug=T
 
 library('data.table')
 library('parallel')
+library('igraph')
 source('~/local/bin/pbutils.R')
 
 MPI_collectives = c(
@@ -185,16 +186,17 @@ messageDeps = function(x){
 
   ##!@warning side effects
   f = function(s, r){
-    if(!is.na(r$reqs) && length(r$reqs) > 0)
+    if(!is.na(r$fref))
       dest = r$fref
     else
       dest = r$uid
     ## s$uid, dest=dest))
-    x$deps[x$uid == dest][[1]] = c(x$deps[x$uid == dest][[1]], s$uid)
+    index = which(x$uid == dest) 
+    x$deps[index][[1]] = c(x$deps[index][[1]], s$uid)
   }
 
   f_noSideEffects = function(s, r){
-    if(!is.na(r$reqs) && length(r$reqs) > 0)
+    if(!is.na(r$fref))
       dest = r$fref
     else
       dest = r$uid
@@ -245,8 +247,9 @@ messageDeps = function(x){
   ## complete the indices with multiple references
   if(length(multDests)){
     d = x$deps
-    d[x[j(multDests), which=T]] =
-      mapply(c, d[x[J(multDests), which=T]],
+    sel = x[J(multDests), which=T]
+    d[sel] =
+      mapply(c, d[sel],
              lapply(multDests,
                     function(d) srDeps[J(d)]$src), SIMPLIFY=F)
     x$deps = d
@@ -328,12 +331,14 @@ deps = function(x){
 ### vertices and edges with attributes.
 tableToGraph = function(x){
   ## For the vertex frame, column 1 is the vertex name.
-  vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
+  ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
+  vertices = x[, list(name, rank, vertex)]
+  vertices$name = paste(vertices$name, vertices$rank)
+  setnames(vertices, names(vertices), c('label', 'rank', 'vertex'))
+  vertices$rank = NULL
+  ##vertices = x[,list(vertex)]
   setcolorder(vertices, c('vertex', setdiff(names(vertices), 'vertex')))
   setkey(vertices, vertex)
-  vRLE = rle(vertices$vertex)
-  single = vRLE$values[vRLE$lengths == 1]
-  multiple = vRLE$values[vRLE$lengths > 1]
   vertices = unique(vertices)
 
   ## For the edge list frame, column 1 is the source, and column 2 is the destination.
