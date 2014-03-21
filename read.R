@@ -1,13 +1,14 @@
 #!/usr/bin/env Rscript
 
 source('~/local/bin/pbutils.R')
+adjWidth()
 
 debug=T
 
-library('data.table')
-library('parallel')
-library('igraph')
-source('~/local/bin/pbutils.R')
+require('data.table')
+require('parallel')
+require('igraph')
+require('hash')
 
 MPI_collectives = c(
   'MPI_Init',
@@ -46,7 +47,11 @@ MPI_Sends =
 MPI_Recvs =
   c('MPI_Recv', 'MPI_Irecv', 'MPI_Recv_init')
 
-readGlobal = function(filename = "glog.dat"){
+## for Merlot, I have the following formula for message latency:
+## 6.456e-06 + 2.478e-10 * size
+latency = list(merlot = function(size) 6.456e-6 + 2.478e-10 * size)
+
+readGlobal = function(path = '.', filename = "glog.dat"){
   source(filename)
 }
 
@@ -77,13 +82,21 @@ readRuntime = function(filename){
 }
 
 readAll = function(path='.'){
+  readGlobal(path)
+
+  ## runtime
   files = sort(list.files(path,'runtime.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
-  result = lapply(files, readRuntime)
-  names(result) = ranks
-  result = napply(result, function(x, name){x$rank = as.numeric(name);x})
-  ## result = rbindlist(result)
-  return(result)
+  runtimes = lapply(files, readRuntime)
+  names(runtimes) = ranks
+  runtimes = napply(runtimes, function(x, name){x$rank = as.numeric(name);x})
+
+  ## assignment
+  files = sort(list.files(path,'assign.*.dat'))
+  ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
+  assignments = rbindlist(lapply(files, read.table, h=T))
+  
+  return(list(runtimes=runtimes, assignments=assignments))
 }
 
 ## single rank only!
@@ -108,6 +121,9 @@ readAll = function(path='.'){
   ## deps: predecessors
   x$deps = as.numeric(NA)
 
+  ## succ: successors (only maintained per rank)
+  x$succ = as.numeric(NA)
+  
   ## brefs: request sources
   x$brefs = vector('list', nrow(x))
 
@@ -122,6 +138,7 @@ readAll = function(path='.'){
   ## sequential dependencies
   rows = 1:nrow(x)
   x$deps[tail(rows, -1)] = x$uid[head(rows, -1)]
+  x$succ[head(rows, -1)] = x$uid[tail(rows, -1)]
 
   ## get backrefs for blocking receives and waits,
   ## nonblocking successful tests, and request frees
@@ -284,7 +301,10 @@ deps = function(x){
 
   sel = x[!is.na(deps), which=T]
   x$deps[sel] = newUIDs[as.character(x$deps[sel])]
-  
+
+  sel = x[!is.na(succ), which=T]
+  x$succ[sel] = newUIDs[as.character(x$succ[sel])]
+
   sel = which(!sapply(x$brefs, is.null))
   ##!@todo speed this up
   x$brefs[sel] =
@@ -327,8 +347,24 @@ deps = function(x){
 }
 
 ### vertices and edges with attributes.
-tableToGraph = function(x){
-  ##!@todo replace computation vertices with weighted edges
+tableToGraph = function(x, assignments){
+  ## replace computation vertices with weighted edges
+  setkey(x, uid)
+  uids = x[is.na(name)]$uid
+  edges = do.call(rbind, lapply(uids,
+    function(u) {
+      e=x[J(u)];
+      data.frame(src=unlist(e$deps),dest=unlist(e$succ),weight=e$duration)
+    }))
+  predMap = hash(uids, edges$src)
+  succMap = hash(uids, edges$dest)
+
+  x = x[!is.na(name)]
+  
+  ## delete dependencies on computation vertices
+  ##!@todo lapply may be faster here
+  x$deps =
+    mclapply(x$deps, function(e) Filter(Negate(is.na), x[J(e), which=T]))
 
   ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
 
@@ -336,26 +372,29 @@ tableToGraph = function(x){
   
   ## For the vertex frame, column 1 is the vertex name.
   ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
-  vertices = x[, list(name, rank, vertex)]
+  vertices = x[, list(name, duration, rank, vertex)]
   vertices$name = paste(vertices$name, vertices$rank)
-  setnames(vertices, names(vertices), c('label', 'rank', 'vertex'))
+  setnames(vertices, names(vertices), c('label', 'duration', 'rank', 'vertex'))
   vertices$rank = NULL
   ##vertices = x[,list(vertex)]
   setcolorder(vertices, c('vertex', setdiff(names(vertices), 'vertex')))
   setkey(vertices, vertex)
   vertices = unique(vertices)
 
-  ## For the edge list frame, column 1 is the source, and column 2 is the destination.
+  ## For the edge list frame, column 1 is the source and column 2 is the dest
   setkey(x, uid)
   sel = x$uid[which(!is.na(x$deps))]
-  edges =
+  edges = rbind(edges,
     rbindlist(lapply(sel, function(u)
-                     rbindlist(lapply(x[J(u)]$deps, function(d)
-                                      data.frame(src=x[J(d)]$vertex,dest=x[J(u)]$vertex)
+                     rbindlist(lapply(x[J(u)]$deps,
+                                      function(d)
+                                      data.frame(src=x[J(d)]$vertex,
+                                                 dest=x[J(u)]$vertex)
                                       )
                                )
                      )
               )
+    )
   
   g = graph.data.frame(edges, vertices=vertices)
   
