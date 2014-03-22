@@ -114,6 +114,12 @@ readAll = function(path='.'){
   ##!@todo for replay, we need to know both the ANY_SOURCE for
   ##! matching and the actual source to post the PMPI receive.
   x = x[!sel]
+
+  ##!@todo clean up duplicate communicator entries for comm creation
+  ## tag: new rank
+  ## msgSize: new size
+  ## comm: new comm
+  ## if not participating, new comm = MPI_COMM_NULL (will not free)
   
   x$vertex = as.numeric(NA)
 
