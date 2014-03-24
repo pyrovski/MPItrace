@@ -47,6 +47,12 @@ MPI_Sends =
 MPI_Recvs =
   c('MPI_Recv', 'MPI_Irecv', 'MPI_Recv_init')
 
+MPI_Comm_sources =
+  c('MPI_Comm_dup', 'MPI_Comm_create', 'MPI_Comm_split')
+
+MPI_Comm_sinks =
+  c('MPI_Comm_free')
+
 ## for Merlot, I have the following formula for message latency:
 ## 6.456e-06 + 2.478e-10 * size
 latency = list(merlot = function(size) 6.456e-6 + 2.478e-10 * size)
@@ -115,12 +121,6 @@ readAll = function(path='.'){
   ##! matching and the actual source to post the PMPI receive.
   x = x[!sel]
 
-  ##!@todo clean up duplicate communicator entries for comm creation
-  ## tag: new rank
-  ## msgSize: new size
-  ## comm: new comm
-  ## if not participating, new comm = MPI_COMM_NULL (will not free)
-  
   x$vertex = as.numeric(NA)
 
   # numeric for now, list later
@@ -140,6 +140,48 @@ readAll = function(path='.'){
   x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
 
   ##!@todo parse list of communicators and their members
+
+  ##!@todo clean up duplicate communicator entries for comm creation
+  ## tag: new rank
+  ## msgSize: new size
+  ## comm: new comm
+  ## if not participating, new comm = MPI_COMM_NULL (will not free)
+  if(any(x$name %in% MPI_Comm_sources)){
+    ## remove duplicate communicator creation rows, add to a separate table
+
+    ## old comm, new comm, new size, new rank, uid of sink
+
+    sel =
+      x[name %in% MPI_Comm_sources & is.na(size) & comm != MPI_COMM_NULL,
+        which=T]
+    f = function(s) {
+      parentComm = x[s,comm]
+      childComm = x[s+1,comm]
+      newSize = x[s+1,size]
+      newRank = x[s+1,tag]
+      source = x[s, uid]
+      if(childComm == MPI_COMM_NULL)
+        sink = as.numeric(NA)
+      else
+        sink = head(x[uid > x[s, uid] &
+          name %in% MPI_Comm_sinks &
+          comm == x[s+1,comm],
+          uid],
+          1)
+      return(data.frame(parentComm = parentComm,
+                        childComm = childComm,
+                        newSize = newSize,
+                        newRank = newRank,
+                        source = source,
+                        sink = sink))
+    }
+    commTable = rbindlist(lapply(sel, f))
+    commTable$rank = rank
+
+    sel = x[!name %in% MPI_Comm_sources | is.na(size), which=T]
+    x = x[sel]
+  } else
+    commTable = NULL
 
   ## sequential dependencies
   rows = 1:nrow(x)
@@ -194,7 +236,7 @@ readAll = function(path='.'){
   }
   x[,reqs:=NULL]
   cat('Rank', rank, 'done\n')
-  return(x)
+  return(list(runtimes = x, comms = commTable))
 }
 
 messageDeps = function(x){
@@ -288,14 +330,15 @@ messageDeps = function(x){
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
 
-  ## if(debug)
-  ##   x = lapply(x, .deps, max(ranks))
-  ## else
+   if(debug)
+     x = lapply(x, .deps, max(ranks))
+   else
     x = mclapply(x, .deps, maxRank=max(ranks))
 
   ## merge tables
+  commTable = rbindlist(lapply(x, '[[', 'comms'))
   ##!@todo order by topological sort after all dependecies done
-  x = rbindlist(x)[order(start)]
+  x = rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
   
   ## remap uids
   newUIDs = as.list(1:nrow(x))
@@ -349,7 +392,7 @@ deps = function(x){
   x[is.na(vertex), vertex:=vid+(0:(nrow(.SD)-1))]
   vid = max(x$vertex, na.rm=T) + 1
 
-  return(x)
+  return(list(runtimes = x, comms = commTable))
 }
 
 ### vertices and edges with attributes.
@@ -405,4 +448,10 @@ tableToGraph = function(x, assignments){
   g = graph.data.frame(edges, vertices=vertices)
   
   return(g)
+}
+
+run = function(path='.'){
+  a = readAll(path)
+  b = messageDeps(deps(a$runtimes))
+  return(b)
 }
