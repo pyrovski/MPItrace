@@ -10,6 +10,12 @@ require('parallel')
 require('igraph')
 require('hash')
 
+MPI_Comm_sources =
+  c('MPI_Comm_dup', 'MPI_Comm_create', 'MPI_Comm_split')
+
+MPI_Comm_sinks =
+  c('MPI_Comm_free')
+
 MPI_collectives = c(
   'MPI_Init',
   'MPI_Finalize',
@@ -27,12 +33,13 @@ MPI_collectives = c(
   'MPI_Alltoall',
   'MPI_Alltoallv',
   'MPI_Scan',
-  'MPI_File_write_at_all')
+  'MPI_File_write_at_all',
+  MPI_Comm_sources)
 
 MPI_req_sinks =
   c('MPI_Wait', 'MPI_Waitall', 'MPI_Waitsome',
     'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
-    'MPI_Request_free')
+    'MPI_Request_free', 'MPI_Cancel')
 
 MPI_req_sources =
   c('MPI_Isend','MPI_Irecv','MPI_Irsend','MPI_Bsend_init',
@@ -46,12 +53,6 @@ MPI_Sends =
 
 MPI_Recvs =
   c('MPI_Recv', 'MPI_Irecv', 'MPI_Recv_init')
-
-MPI_Comm_sources =
-  c('MPI_Comm_dup', 'MPI_Comm_create', 'MPI_Comm_split')
-
-MPI_Comm_sinks =
-  c('MPI_Comm_free')
 
 ## for Merlot, I have the following formula for message latency:
 ## 6.456e-06 + 2.478e-10 * size
@@ -139,9 +140,7 @@ readAll = function(path='.'){
   ## uid: unique identifier
   x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
 
-  ##!@todo parse list of communicators and their members
-
-  ##!@todo clean up duplicate communicator entries for comm creation
+  ## clean up duplicate communicator entries for comm creation
   ## tag: new rank
   ## msgSize: new size
   ## comm: new comm
@@ -154,6 +153,7 @@ readAll = function(path='.'){
     sel =
       x[name %in% MPI_Comm_sources & is.na(size) & comm != MPI_COMM_NULL,
         which=T]
+
     f = function(s) {
       parentComm = x[s,comm]
       childComm = x[s+1,comm]
@@ -162,12 +162,15 @@ readAll = function(path='.'){
       source = x[s, uid]
       if(childComm == MPI_COMM_NULL)
         sink = as.numeric(NA)
-      else
+      else {
         sink = head(x[uid > x[s, uid] &
           name %in% MPI_Comm_sinks &
           comm == x[s+1,comm],
           uid],
           1)
+        if(length(sink) < 1)
+          sink = x[name == 'MPI_Finalize' & rank == x[s, rank], uid]
+      }
       return(data.frame(parentComm = parentComm,
                         childComm = childComm,
                         newSize = newSize,
@@ -178,7 +181,7 @@ readAll = function(path='.'){
     commTable = rbindlist(lapply(sel, f))
     commTable$rank = rank
 
-    sel = x[!name %in% MPI_Comm_sources | is.na(size), which=T]
+    sel = x[!name %in% MPI_Comm_sources | is.na(size) & comm != MPI_COMM_NULL, which=T]
     x = x[sel]
   } else
     commTable = NULL
@@ -330,16 +333,17 @@ messageDeps = function(x){
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
 
-   if(debug)
-     x = lapply(x, .deps, max(ranks))
-   else
+##   if(debug)
+##     x = lapply(x, .deps, max(ranks))
+##   else
     x = mclapply(x, .deps, maxRank=max(ranks))
 
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
+  
   ##!@todo order by topological sort after all dependecies done
   x = rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
-  
+
   ## remap uids
   newUIDs = as.list(1:nrow(x))
   names(newUIDs) = x$uid
@@ -359,7 +363,16 @@ deps = function(x){
   x$brefs[sel] =
     lapply(x$brefs[sel], function(x)
            unlist(unname(newUIDs[sapply(x,as.character)])))
+
+  commTable$source = newUIDs[as.character(commTable$source)]
+
+  sel = which(!is.na(commTable$sink))
+  commTable$sink[sel] = newUIDs[as.character(commTable$sink[sel])]
+    
+  ##!@todo unify communicators
+  ## For now, assume only a single level of derived communicators.
   
+
   ## collectives
   ## init and finalize
   init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
