@@ -371,7 +371,10 @@ deps = function(x){
     
   ##!@todo unify communicators
   ## For now, assume only a single level of derived communicators.
-  
+  if(any(commTable$parentComm != MPI_COMM_WORLD))
+    cat('Multiple-derived communicators not supported yet.\n')
+
+  setkey(comTable, newSize)
 
   ## collectives
   ## init and finalize
