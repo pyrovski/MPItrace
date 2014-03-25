@@ -339,12 +339,12 @@ messageDeps = function(x){
 
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
-
-   if(debug)
-     x = lapply(x, .deps, max(ranks))
-   else
+  
+  ## if(debug)
+  ##   x = lapply(x, .deps, max(ranks))
+  ## else
     x = mclapply(x, .deps, maxRank=max(ranks))
-
+  
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
  
@@ -399,9 +399,15 @@ deps = function(x){
     setkey(d)
     sel = commTable[d, which=T]
     sel = intersect(sel, commTable[childComm != MPI_COMM_NULL, which=T])
-    commTable[sel, unifiedComm := as.character(cid)]
+
+    ## Handle multiple subcomms from the same collective. The
+    ## selection represents a single collective call, but the
+    ## resulting communicators may be disjoint
+    uranks = unique(commTable[sel, ranks])
+    commTable[sel, unifiedComm :=
+              as.character(cid-1+match(commTable[sel,ranks], uranks))]
     commTable[d, done := T]
-    cid = cid + 1
+    cid = max(as.integer(commTable$unifiedComm), na.rm=T) + 1
     
     ## replace newly unified parentComms in commTable
     setkey(commTable, rank, parentComm)
@@ -437,6 +443,7 @@ deps = function(x){
 
     ##!@todo get next comm (must be a child comm by definition
   }
+  commTable$done = NULL
   
   ## collectives
   ## init and finalize
