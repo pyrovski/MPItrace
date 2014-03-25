@@ -414,6 +414,15 @@ deps = function(x){
   x[is.na(vertex), vertex:=vid+(0:(nrow(.SD)-1))]
   vid = max(x$vertex, na.rm=T) + 1
 
+### commTable ###
+### parentComm: parent communicator. Mostly useful for collective semantics
+### childComm: child communicator
+### newSize: size of child communicator
+### newRank: resulting rank in child communicator
+### source: uid of originating MPI call
+### sink: end of communicator validity; MPI_Comm_free() or MPI_Finalize()
+### rank: rank of caller in MPI_COMM_WORLD
+### ranks: list of MPI_COMM_WORLD ranks participating in new communicator
   return(list(runtimes = x, comms = commTable))
 }
 
