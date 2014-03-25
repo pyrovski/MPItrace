@@ -154,6 +154,8 @@ readAll = function(path='.'){
       x[name %in% MPI_Comm_sources & is.na(size) & comm != MPI_COMM_NULL,
         which=T]
 
+    ##!@todo get rank lists from reqs field
+    
     f = function(s) {
       parentComm = x[s,comm]
       childComm = x[s+1,comm]
