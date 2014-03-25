@@ -120,7 +120,8 @@ readAll = function(path='.'){
   sel = x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG
   ##!@todo for replay, we need to know both the ANY_SOURCE for
   ##! matching and the actual source to post the PMPI receive.
-  x = x[!sel]
+  if(length(sel))
+    x = x[!sel]
 
   x$vertex = as.numeric(NA)
 
@@ -154,14 +155,13 @@ readAll = function(path='.'){
       x[name %in% MPI_Comm_sources & is.na(size) & comm != MPI_COMM_NULL,
         which=T]
 
-    ##!@todo get rank lists from reqs field
-    
     f = function(s) {
       parentComm = x[s,comm]
       childComm = x[s+1,comm]
       newSize = x[s+1,size]
       newRank = x[s+1,tag]
       source = x[s, uid]
+      ranks = x[s+1, reqs]
       if(childComm == MPI_COMM_NULL)
         sink = as.numeric(NA)
       else {
@@ -177,6 +177,7 @@ readAll = function(path='.'){
                         childComm = childComm,
                         newSize = newSize,
                         newRank = newRank,
+                        ranks = unlist(ranks),
                         source = source,
                         sink = sink))
     }
@@ -335,9 +336,9 @@ messageDeps = function(x){
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
 
-##   if(debug)
-##     x = lapply(x, .deps, max(ranks))
-##   else
+###   if(debug)
+###     x = lapply(x, .deps, max(ranks))
+###   else
     x = mclapply(x, .deps, maxRank=max(ranks))
 
   ## merge tables
@@ -376,7 +377,7 @@ deps = function(x){
   if(any(commTable$parentComm != MPI_COMM_WORLD))
     cat('Multiple-derived communicators not supported yet.\n')
 
-  setkey(comTable, newSize)
+  setkey(commTable, newSize)
 
   ## collectives
   ## init and finalize
