@@ -10,6 +10,8 @@ require('parallel')
 require('igraph')
 require('hash')
 
+options(datatable.nomatch=0)
+
 MPI_Comm_sources =
   c('MPI_Comm_dup', 'MPI_Comm_create', 'MPI_Comm_split')
 
@@ -345,7 +347,7 @@ deps = function(x){
 
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
-  
+ 
   ##!@todo order by topological sort after all dependecies done
   x = rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
 
@@ -374,14 +376,68 @@ deps = function(x){
   sel = which(!is.na(commTable$sink))
   commTable$sink[sel] = newUIDs[as.character(commTable$sink[sel])]
     
-  ##!@todo unify communicators
+  commTable$source = unlist(commTable$source)
+  commTable$sink = unlist(commTable$sink)
+
   ## For now, assume only a single level of derived communicators.
-  ##if(any(commTable$parentComm != MPI_COMM_WORLD))
-  ##  cat('Multiple-derived communicators not supported yet.\n')
+  if(any(commTable$parentComm != MPI_COMM_WORLD))
+    cat('Multiple-derived communicators not supported yet.\n')
 
-  setkey(commTable, newSize)
-  comm = MPI_COMM_WORLD
+  ## unify communicators
+  commTable$done = F
+  cid = 1
+  
+  commList = list(MPI_COMM_WORLD)
+  while(length(commList)){
+    comm = commList[[1]]
+    commList = tail(commList, -1)
+    setkey(commTable, rank, source, done)
+    sel = commTable[parentComm == comm & !done, which=T]
 
+    d = commTable[sel,list(source=min(source)),by=rank]
+    d$done = F
+    setkey(d)
+    sel = commTable[d, which=T]
+    sel = intersect(sel, commTable[childComm != MPI_COMM_NULL, which=T])
+    commTable[sel, unifiedComm := as.character(cid)]
+    commTable[d, done := T]
+    cid = cid + 1
+    
+    ## replace newly unified parentComms in commTable
+    setkey(commTable, rank, parentComm)
+    commMap =
+      unique(commTable[!is.na(unifiedComm), list(rank, childComm, unifiedComm)])
+    setnames(commMap, names(commMap), c('rank', 'parentComm', 'unifiedComm'))
+    setkey(commMap, rank, parentComm)
+    commTable[commMap, parentComm := unifiedComm]
+
+    ## replace childComms in x
+    
+    ##! this handles multiple uses of the same communicator value in
+    ##! different communicator lifetimes, and makes sure replacement
+    ##! locations are between source and sink (inclusive)
+    d$done = T
+    setkey(d)
+    setkey(commTable, rank, source, done)
+    rowApply(commTable[d], function(row)
+             x[rank == row$rank &
+               comm == row$childComm &
+               uid >= row$source &
+               uid <= row$sink,
+               comm := row$unifiedComm]
+             )
+
+    ## if more entries in current comm, continue
+    d$source = NULL
+    d$done = F
+    setkey(d)
+    setkey(commTable, rank, done)
+    if(nrow(commTable[d]))
+      commList = c(comm, commList)
+
+    ##!@todo get next comm (must be a child comm by definition
+  }
+  
   ## collectives
   ## init and finalize
   init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
