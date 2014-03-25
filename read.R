@@ -161,7 +161,6 @@ readAll = function(path='.'){
       newSize = x[s+1,size]
       newRank = x[s+1,tag]
       source = x[s, uid]
-      ranks = x[s+1, reqs]
       if(childComm == MPI_COMM_NULL)
         sink = as.numeric(NA)
       else {
@@ -177,12 +176,15 @@ readAll = function(path='.'){
                         childComm = childComm,
                         newSize = newSize,
                         newRank = newRank,
-                        ranks = unlist(ranks),
                         source = source,
-                        sink = sink))
+                        sink = sink,
+                        stringsAsFactors=F))
     }
     commTable = rbindlist(lapply(sel, f))
     commTable$rank = rank
+    commTable$ranks =
+      lapply(commTable$source, function(r)
+             as.integer(unlist(x[1 + x[uid == r, which=T], reqs])))
 
     sel = x[!name %in% MPI_Comm_sources | is.na(size) & comm != MPI_COMM_NULL, which=T]
     x = x[sel]
@@ -336,9 +338,9 @@ messageDeps = function(x){
 deps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
 
-###   if(debug)
-###     x = lapply(x, .deps, max(ranks))
-###   else
+   if(debug)
+     x = lapply(x, .deps, max(ranks))
+   else
     x = mclapply(x, .deps, maxRank=max(ranks))
 
   ## merge tables
@@ -374,10 +376,11 @@ deps = function(x){
     
   ##!@todo unify communicators
   ## For now, assume only a single level of derived communicators.
-  if(any(commTable$parentComm != MPI_COMM_WORLD))
-    cat('Multiple-derived communicators not supported yet.\n')
+  ##if(any(commTable$parentComm != MPI_COMM_WORLD))
+  ##  cat('Multiple-derived communicators not supported yet.\n')
 
   setkey(commTable, newSize)
+  comm = MPI_COMM_WORLD
 
   ## collectives
   ## init and finalize
