@@ -1,15 +1,19 @@
 #!/usr/bin/env Rscript
 
 source('~/local/bin/pbutils.R')
-adjWidth()
-
-debug=T
 
 require('data.table')
 require('parallel')
 require('igraph')
 require('hash')
 
+adjWidth()
+
+debug=T
+
+if(debug){
+  options(mc.cores=1)
+}
 options(datatable.nomatch=0)
 
 MPI_Comm_sources =
@@ -119,6 +123,7 @@ readAll = function(path='.'){
 
   ##! process ANY_SOURCE and ANY_TAG entries
   ##!@todo preserve ANY_SOURCE and ANY_TAG in new columns?
+  ##!@todo resolve ANY_SOURCE and ANY_TAG for Irecv (not a problem in MCB)
   sel = x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG
   ##!@todo for replay, we need to know both the ANY_SOURCE for
   ##! matching and the actual source to post the PMPI receive.
@@ -249,6 +254,7 @@ readAll = function(path='.'){
   return(list(runtimes = x, comms = commTable))
 }
 
+##!@todo make sure non-WORLD comm messages are matched
 messageDeps = function(x){
   ## match inter-rank messages. Messages (excluding MPI_ANY_SOURCE and
   ## MPI_ANY_TAG) are uniquely identified by the following: source,
@@ -256,18 +262,15 @@ messageDeps = function(x){
   ## MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag and source at
   ## run time.
 
+  commTable = x$comms
+  x = x$runtimes
+  
   mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
   mids = mids[complete.cases(mids)]
 
-  ##!@warning side effects
-  f = function(s, r){
-    if(!is.na(r$fref))
-      dest = r$fref
-    else
-      dest = r$uid
-    ## s$uid, dest=dest))
-    index = which(x$uid == dest) 
-    x$deps[index][[1]] = c(x$deps[index][[1]], s$uid)
+  if(nrow(mids) < 1){
+    cat('no messages\n')
+    return(list(runtimes=x, comms=commTable))
   }
 
   f_noSideEffects = function(s, r){
@@ -277,11 +280,20 @@ messageDeps = function(x){
       dest = r$uid
     return(list(src=s$uid, dest=dest))
   }
-  
+
   setkey(x, src, dest, size, tag, comm)
   ## rbindlist makes shitty data tables?
   srDeps = mclapply(1:nrow(mids), function(mid){
     matching = x[mids[mid]][order(uid)]
+    canceled =
+      x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
+### ignore canceled requests and requests not waited for
+    matching = matching[!fref %in% canceled & !is.na(fref)]
+    if(nrow(matching) < 1){
+      cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
+      return(data.frame())
+    }
+      
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
     if(debug)
@@ -290,7 +302,7 @@ messageDeps = function(x){
     ## matching wait, test, or free
     if(nrow(sends) != nrow(recvs))
       stop('mismatched send-receive:', mids[mid])
-    
+
     result =
       lapply(1:nrow(sends), function(row) f_noSideEffects(sends[row], recvs[row]))
     result = as.data.frame(do.call(rbind, result))
@@ -371,79 +383,81 @@ deps = function(x){
     lapply(x$brefs[sel], function(x)
            unlist(unname(newUIDs[sapply(x,as.character)])))
 
-  commTable$source = newUIDs[as.character(commTable$source)]
+  if(nrow(commTable) > 0){
+    commTable$source = newUIDs[as.character(commTable$source)]
 
-  sel = which(!is.na(commTable$sink))
-  commTable$sink[sel] = newUIDs[as.character(commTable$sink[sel])]
+    sel = which(!is.na(commTable$sink))
+    commTable$sink[sel] = newUIDs[as.character(commTable$sink[sel])]
     
-  commTable$source = unlist(commTable$source)
-  commTable$sink = unlist(commTable$sink)
+    commTable$source = unlist(commTable$source)
+    commTable$sink = unlist(commTable$sink)
 
-  ## For now, assume only a single level of derived communicators.
-  if(any(commTable$parentComm != MPI_COMM_WORLD))
-    cat('Multiple-derived communicators not supported yet.\n')
+    ## For now, assume only a single level of derived communicators.
+    if(any(commTable$parentComm != MPI_COMM_WORLD))
+      cat('Multiple-derived communicators not supported yet.\n')
 
-  ## unify communicators
-  commTable$done = F
-  cid = 1
-  
-  commList = list(MPI_COMM_WORLD)
-  while(length(commList)){
-    comm = commList[[1]]
-    commList = tail(commList, -1)
-    setkey(commTable, rank, source, done)
-    sel = commTable[parentComm == comm & !done, which=T]
-
-    d = commTable[sel,list(source=min(source)),by=rank]
-    d$done = F
-    setkey(d)
-    sel = commTable[d, which=T]
-    sel = intersect(sel, commTable[childComm != MPI_COMM_NULL, which=T])
-
-    ## Handle multiple subcomms from the same collective. The
-    ## selection represents a single collective call, but the
-    ## resulting communicators may be disjoint
-    uranks = unique(commTable[sel, ranks])
-    commTable[sel, unifiedComm :=
-              as.character(cid-1+match(commTable[sel,ranks], uranks))]
-    commTable[d, done := T]
-    cid = max(as.integer(commTable$unifiedComm), na.rm=T) + 1
+    ## unify communicators
+    commTable$done = F
+    cid = 1
     
-    ## replace newly unified parentComms in commTable
-    setkey(commTable, rank, parentComm)
-    commMap =
-      unique(commTable[!is.na(unifiedComm), list(rank, childComm, unifiedComm)])
-    setnames(commMap, names(commMap), c('rank', 'parentComm', 'unifiedComm'))
-    setkey(commMap, rank, parentComm)
-    commTable[commMap, parentComm := unifiedComm]
+    commList = list(MPI_COMM_WORLD)
+    while(length(commList)){
+      comm = commList[[1]]
+      commList = tail(commList, -1)
+      setkey(commTable, rank, source, done)
+      sel = commTable[parentComm == comm & !done, which=T]
 
-    ## replace childComms in x
-    
-    ##! this handles multiple uses of the same communicator value in
-    ##! different communicator lifetimes, and makes sure replacement
-    ##! locations are between source and sink (inclusive)
-    d$done = T
-    setkey(d)
-    setkey(commTable, rank, source, done)
-    rowApply(commTable[d], function(row)
-             x[rank == row$rank &
-               comm == row$childComm &
-               uid >= row$source &
-               uid <= row$sink,
-               comm := row$unifiedComm]
-             )
+      d = commTable[sel,list(source=min(source)),by=rank]
+      d$done = F
+      setkey(d)
+      sel = commTable[d, which=T]
+      sel = intersect(sel, commTable[childComm != MPI_COMM_NULL, which=T])
 
-    ## if more entries in current comm, continue
-    d$source = NULL
-    d$done = F
-    setkey(d)
-    setkey(commTable, rank, done)
-    if(nrow(commTable[d]))
-      commList = c(comm, commList)
+      ## Handle multiple subcomms from the same collective. The
+      ## selection represents a single collective call, but the
+      ## resulting communicators may be disjoint
+      uranks = unique(commTable[sel, ranks])
+      commTable[sel, unifiedComm :=
+                as.character(cid-1+match(commTable[sel,ranks], uranks))]
+      commTable[d, done := T]
+      cid = max(as.integer(commTable$unifiedComm), na.rm=T) + 1
+      
+      ## replace newly unified parentComms in commTable
+      setkey(commTable, rank, parentComm)
+      commMap =
+        unique(commTable[!is.na(unifiedComm), list(rank, childComm, unifiedComm)])
+      setnames(commMap, names(commMap), c('rank', 'parentComm', 'unifiedComm'))
+      setkey(commMap, rank, parentComm)
+      commTable[commMap, parentComm := unifiedComm]
 
-    ##!@todo get next comm (must be a child comm by definition
-  }
-  commTable$done = NULL
+      ## replace childComms in x
+      
+      ##! this handles multiple uses of the same communicator value in
+      ##! different communicator lifetimes, and makes sure replacement
+      ##! locations are between source and sink (inclusive)
+      d$done = T
+      setkey(d)
+      setkey(commTable, rank, source, done)
+      rowApply(commTable[d], function(row)
+               x[rank == row$rank &
+                 comm == row$childComm &
+                 uid >= row$source &
+                 uid <= row$sink,
+                 comm := row$unifiedComm]
+               )
+
+      ## if more entries in current comm, continue
+      d$source = NULL
+      d$done = F
+      setkey(d)
+      setkey(commTable, rank, done)
+      if(nrow(commTable[d]))
+        commList = c(comm, commList)
+
+      ##!@todo get next comm (must be a child comm by definition
+    }
+    commTable$done = NULL
+  } ## if commTable not empty
   
   ## collectives
   ## init and finalize
@@ -497,17 +511,17 @@ tableToGraph = function(x, assignments){
   edges = do.call(rbind, lapply(uids,
     function(u) {
       e=x[J(u)];
-      data.frame(src=unlist(e$deps),dest=unlist(e$succ),weight=e$duration)
+      data.frame(src=x[J(unlist(e$deps))]$vertex,
+                 dest=x[J(unlist(e$succ))]$vertex,
+                 weight=e$duration)
     }))
-  predMap = hash(uids, edges$src)
-  succMap = hash(uids, edges$dest)
+  ##predMap = hash(uids, edges$src)
+  ##succMap = hash(uids, edges$dest)
 
   x = x[!is.na(name)]
   
   ## delete dependencies on computation vertices
-  ##!@todo lapply may be faster here
-  x$deps =
-    mclapply(x$deps, function(e) Filter(Negate(is.na), x[J(e), which=T]))
+  x$deps = mclapply(x$deps, function(e) x[J(e)]$uid)
 
   ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
 
@@ -526,19 +540,16 @@ tableToGraph = function(x, assignments){
 
   ## For the edge list frame, column 1 is the source and column 2 is the dest
   setkey(x, uid)
-  sel = x$uid[which(!is.na(x$deps))]
-  edges = rbind(edges,
-    rbindlist(lapply(sel, function(u)
-                     rbindlist(lapply(x[J(u)]$deps,
-                                      function(d)
-                                      data.frame(src=x[J(d)]$vertex,
-                                                 dest=x[J(u)]$vertex)
-                                      )
-                               )
-                     )
-              )
-    )
-  
+  sel = x[sapply(x$deps, length) > 0, uid]
+
+  f = function(u){
+    f2 = function(d) data.frame(src=x[J(d)]$vertex, dest=x[J(u)]$vertex)
+    rbindlist(lapply(x[J(u)]$deps, f2))
+  }
+
+  ## add communication edges
+  edges = rbind(edges, cbind(rbindlist(lapply(sel, f)), weight=0))
+    
   g = graph.data.frame(edges, vertices=vertices)
   
   return(g)
