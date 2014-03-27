@@ -260,7 +260,6 @@ readAll = function(path='.'){
   return(list(runtimes = x, comms = commTable))
 }
 
-##!@todo make sure non-WORLD comm messages are matched
 messageDeps = function(x){
   ## match inter-rank messages. Messages (excluding MPI_ANY_SOURCE and
   ## MPI_ANY_TAG) are uniquely identified by the following: source,
@@ -366,6 +365,8 @@ preDeps = function(x){
 }
 
 deps = function(x){
+  if(debug)
+    cat('Merging tables and remapping UIDs\n')
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
  
@@ -393,6 +394,8 @@ deps = function(x){
     lapply(x$brefs[sel], function(x)
            unlist(unname(newUIDs[sapply(x,as.character)])))
 
+  if(debug)
+    cat('Unifying communicators\n')
   if(nrow(commTable) > 0){
     commTable$source = newUIDs[as.character(commTable$source)]
 
@@ -428,9 +431,12 @@ deps = function(x){
       ## selection represents a single collective call, but the
       ## resulting communicators may be disjoint
       uranks = unique(commTable[sel, ranks])
+      oldUnified = Filter(Negate(is.na), unique(commTable$unifiedComm))
       commTable[sel, unifiedComm :=
                 as.character(cid-1+match(commTable[sel,ranks], uranks))]
       cid = max(as.integer(commTable$unifiedComm), na.rm=T) + 1
+      newUnified =
+        setdiff(Filter(Negate(is.na), unique(commTable$unifiedComm)), oldUnified)
       
       ## replace newly unified parentComms in commTable
       commMap =
@@ -461,49 +467,41 @@ deps = function(x){
       d$done = T
       setkey(d)
       setkey(commTable, rank, source, done)
-      rowApply(commTable[d], function(row)
-               x[rank == row$rank &
-                 comm == row$childComm &
-                 uid >= row$source &
-                 uid <= row$sink,
-                 comm := row$unifiedComm]
-               )
-
+      translate = commTable[d]
+      setkey(commMap, rank, unifiedComm)
+      setkey(translate, rank, childComm)
+      ##!@todo test
+      translate[commMap, childComm := comm]
+      f = function(row)
+        x[uid >= row$source & uid <= row$sink & comm  == row$childComm,
+          comm := row$unifiedComm]
+      rowApply(translate, f)
+      rm(translate)
+    
       ## if more entries in current comm, continue
       d = data.table(parentComm = comm, done=F)
       setkey(d)
       setkey(commTable, parentComm, done)
-      if(nrow(commTable[d])){
+      if(nrow(commTable[d]))
         commList = c(comm, commList)
-        next
-      }
-      ##!@todo get next comm (must be a child comm by definition
-      derivedParents = intersect(commTable$parentComm, commMap$unifiedComm)
-      if(length(derivedParents)){
-        commList = c(commList, derivedParents)
-        next
-      }
-
-      derivedChildren = unique(commTable[is.na(unifiedComm)]$childComm)
-      if(length(derivedChildren)){
-        commList = c(commList, derivedChildren)
-        next
-      }
+      
+      ##!@todo get next comm (must be a child comm by definition)
+      derivedParents = intersect(commTable$parentComm, newUnified)
+      commList = c(commList, derivedParents)
     }
     commTable$done = NULL
+    commTable$unifiedComm = NULL
+    rm(commMap)
   } ## if commTable not empty
   
+  if(debug)
+    cat('Unifying collectives\n')
   ## collectives
   ## init and finalize
-  init = which(x$name == 'MPI_Init' | x$name == 'MPI_Init_thread')
-  finalize = which(x$name == 'MPI_Finalize')
   vid = 3
 
-  ## g = data.table(name='MPI_Init', succ=as.integer(NA), vertex=1)
-  x[init, 'vertex'] = 1
-  
-  ## g = rbindlist(list(g, list(name='MPI_Finalize', succ=NA, vertex=2)))
-  x[finalize, 'vertex'] = 2
+  x[name %in% c('MPI_Init', 'MPI_Init_thread'), 'vertex'] = 1
+  x[name == 'MPI_Finalize', 'vertex'] = 2
 
   if(debug)
     cat('Collectives\n')
@@ -539,10 +537,12 @@ deps = function(x){
 
 ### vertices and edges with attributes.
 tableToGraph = function(x, assignments){
+  if(debug)
+    cat('Computation edges\n')
   ## replace computation vertices with weighted edges
   setkey(x, uid)
-  uids = x[is.na(name)]$uid
-  edges = do.call(rbind, lapply(uids,
+  uids = x[is.na(name), uid]
+  edges = rbindlist(mclapply(uids,
     function(u) {
       e=x[J(u)];
       data.frame(src=x[J(unlist(e$deps))]$vertex,
@@ -553,7 +553,9 @@ tableToGraph = function(x, assignments){
   ##succMap = hash(uids, edges$dest)
 
   x = x[!is.na(name)]
-  
+
+  if(debug)
+    cat('Deleting computation predecessors\n')
   ## delete dependencies on computation vertices
   x$deps = mclapply(x$deps, function(e) x[J(e)]$uid)
 
@@ -581,16 +583,29 @@ tableToGraph = function(x, assignments){
     rbindlist(lapply(x[J(u)]$deps, f2))
   }
 
+  if(debug)
+    cat('Communication edges\n')
   ## add communication edges
   edges = rbind(edges, cbind(rbindlist(lapply(sel, f)), weight=0))
     
+  if(debug)
+    cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
   
   return(g)
 }
 
+shortStats = function(x, thresh=.001){
+  shortTaskRatio = nrow(x[duration < thresh])/nrow(x)
+  shortTimeRatio = sum(x[duration < thresh, duration])/sum(x$duration)
+  cat(shortTaskRatio * 100, '% of tasks <', thresh, 's\n')
+  cat(shortTimeRatio * 100, '% of time in short tasks\n')
+}
+
 run = function(path='.'){
   a = readAll(path)
-  b = messageDeps(deps(a$runtimes))
+  b = messageDeps(deps(preDeps(a$runtimes)))
+  g = tableToGraph(b$runtimes)
   return(b)
 }
+
