@@ -12,7 +12,7 @@ adjWidth()
 debug=T
 
 if(debug){
-  options(mc.cores=1)
+##  options(mc.cores=1)
 }
 options(datatable.nomatch=0)
 
@@ -127,8 +127,13 @@ readAll = function(path='.'){
   sel = x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG
   ##!@todo for replay, we need to know both the ANY_SOURCE for
   ##! matching and the actual source to post the PMPI receive.
-  if(length(sel))
+  if(length(which(sel))){
+    if(debug){
+      cat('Rank', rank, 'deleting', length(which(sel)), 'duplicate ANY_SOURCE and ANY_TAG entries:\n')
+      print(x[sel])
+    }
     x = x[!sel]
+  }
 
   x$vertex = as.numeric(NA)
 
@@ -225,7 +230,8 @@ readAll = function(path='.'){
 
   if(length(sinks)){
     sinkReqs = unique(unlist(x[sinks]$reqs))
-    
+
+    ##!@todo speed this up.  I need to find source->sink pairs quickly.
     ## for each request sink, find its source
     ## double-link sinks and sources for later matching of messages
     sinkIndex = 1
@@ -419,16 +425,28 @@ deps = function(x){
       uranks = unique(commTable[sel, ranks])
       commTable[sel, unifiedComm :=
                 as.character(cid-1+match(commTable[sel,ranks], uranks))]
-      commTable[d, done := T]
       cid = max(as.integer(commTable$unifiedComm), na.rm=T) + 1
       
       ## replace newly unified parentComms in commTable
-      setkey(commTable, rank, parentComm)
       commMap =
-        unique(commTable[!is.na(unifiedComm), list(rank, childComm, unifiedComm)])
-      setnames(commMap, names(commMap), c('rank', 'parentComm', 'unifiedComm'))
-      setkey(commMap, rank, parentComm)
-      commTable[commMap, parentComm := unifiedComm]
+        unique(commTable[!is.na(unifiedComm) & !done, list(rank, childComm, unifiedComm)])
+      setnames(commMap, names(commMap), c('rank', 'comm', 'unifiedComm'))
+      setkey(commMap, rank, comm)
+
+      parentSel = which(commTable$parentComm %in% commMap$comm)
+      if(length(parentSel))
+        commTable[parentSel]$parentComm =
+          commMap[commTable[parentSel, list(rank, comm=parentComm)]]$unifiedComm
+
+      childSel = which(commTable$childComm %in% commMap$comm)
+      if(length(childSel)){
+        setkey(commTable, rank, childComm)
+        commTable[childSel]$childComm =
+          commMap[commTable[childSel, list(rank, comm=childComm)]]$unifiedComm
+      }
+
+      setkeyv(commTable, key(d))
+      commTable[d, done := T]
 
       ## replace childComms in x
       
@@ -447,14 +465,17 @@ deps = function(x){
                )
 
       ## if more entries in current comm, continue
-      d$source = NULL
-      d$done = F
+      d = data.table(parentComm = comm, done=F)
       setkey(d)
-      setkey(commTable, rank, done)
-      if(nrow(commTable[d]))
+      setkey(commTable, parentComm, done)
+      if(nrow(commTable[d])){
         commList = c(comm, commList)
-
+        next
+      }
       ##!@todo get next comm (must be a child comm by definition
+      derivedParents = intersect(commTable$parentComm, commMap$unifiedComm)
+      if(length(derivedParents))
+        commList = c(commList, derivedParents)
     }
     commTable$done = NULL
   } ## if commTable not empty
