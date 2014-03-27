@@ -355,19 +355,23 @@ messageDeps = function(x){
   return(x)
 }
 
-deps = function(x){
+preDeps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
   
   ## if(debug)
   ##   x = lapply(x, .deps, max(ranks))
   ## else
-    x = mclapply(x, .deps, maxRank=max(ranks))
-  
+  x = mclapply(x, .deps, maxRank=max(ranks))
+  return(x)
+}
+
+deps = function(x){
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
  
   ##!@todo order by topological sort after all dependecies done
   x = rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
+  ranks = sort(unique(x$rank))
 
   ## remap uids
   newUIDs = as.list(1:nrow(x))
@@ -413,6 +417,7 @@ deps = function(x){
       setkey(commTable, rank, source, done)
       sel = commTable[parentComm == comm & !done, which=T]
 
+      ##!@todo this doesn't handle terminal child comms yet
       d = commTable[sel,list(source=min(source)),by=rank]
       d$done = F
       setkey(d)
@@ -438,9 +443,9 @@ deps = function(x){
         commTable[parentSel]$parentComm =
           commMap[commTable[parentSel, list(rank, comm=parentComm)]]$unifiedComm
 
+      setkey(commTable, rank, childComm)
       childSel = which(commTable$childComm %in% commMap$comm)
       if(length(childSel)){
-        setkey(commTable, rank, childComm)
         commTable[childSel]$childComm =
           commMap[commTable[childSel, list(rank, comm=childComm)]]$unifiedComm
       }
@@ -474,8 +479,16 @@ deps = function(x){
       }
       ##!@todo get next comm (must be a child comm by definition
       derivedParents = intersect(commTable$parentComm, commMap$unifiedComm)
-      if(length(derivedParents))
+      if(length(derivedParents)){
         commList = c(commList, derivedParents)
+        next
+      }
+
+      derivedChildren = unique(commTable[is.na(unifiedComm)]$childComm)
+      if(length(derivedChildren)){
+        commList = c(commList, derivedChildren)
+        next
+      }
     }
     commTable$done = NULL
   } ## if commTable not empty
