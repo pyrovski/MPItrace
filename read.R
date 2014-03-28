@@ -81,19 +81,25 @@ readRuntime = function(filename){
     name='character',
     size='integer',
     dest='integer',
-    src='integer',
-    tag='integer',
+    src='character', ## converted later to integer
+    tag='character', ## converted later to integer
     comm='character',
     hash='character',
     pkg_w='numeric',
     pp0_w='numeric',
     dram_w='numeric',
-    reqs='character')
+    reqs='character' ## converted later to character list
+    )
   a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
   a[size == MPI_UNDEFINED,]$size = NA
   a[dest == MPI_UNDEFINED,]$dest = NA
-  a[src == MPI_UNDEFINED,]$src = NA
-  a[tag == MPI_UNDEFINED]$tag = NA
+
+  a$src = lapply(strsplit(a$src, ','), as.integer)
+  a$src = lapply(a$src, function(x) {x[x == MPI_UNDEFINED] = NA; x})
+  
+  a$tag = lapply(strsplit(a$tag, ','), as.integer)
+  a$tag = lapply(a$tag, function(x) {x[x == MPI_UNDEFINED] = NA; x})
+
   a$reqs = strsplit(a$reqs,',')
   a[comm == '(nil)',comm:='']
   return(a)
@@ -129,16 +135,16 @@ readAll = function(path='.'){
   ##! process ANY_SOURCE and ANY_TAG entries
   ##!@todo preserve ANY_SOURCE and ANY_TAG in new columns?
   ##!@todo resolve ANY_SOURCE and ANY_TAG for Irecv (not a problem in MCB)
-  sel = (x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG) & x$name == 'MPI_Recv'
+  ##sel = (x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG) & x$name == 'MPI_Recv'
   ##!@todo for replay, we need to know both the ANY_SOURCE for
   ##! matching and the actual source to post the PMPI receive?
-  if(length(which(sel))){
-    if(debug){
-      cat('Rank', rank, 'deleting', length(which(sel)), 'duplicate ANY_SOURCE and ANY_TAG entries:\n')
-      print(x[sel])
-    }
-    x = x[!sel]
-  }
+  ## if(length(which(sel))){
+  ##   if(debug){
+  ##     cat('Rank', rank, 'deleting', length(which(sel)), 'duplicate ANY_SOURCE and ANY_TAG entries:\n')
+  ##     print(x[sel])
+  ##   }
+  ##   x = x[!sel]
+  ## }
 
   x$vertex = as.numeric(NA)
 
@@ -310,8 +316,10 @@ messageDeps = function(x){
       cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
     ## if a receive has a request, the send dependency leads to the
     ## matching wait, test, or free
-    if(nrow(sends) != nrow(recvs))
-      stop('mismatched send-receive:', mids[mid])
+    if(nrow(sends) != nrow(recvs)){
+      errMsg = paste('mismatched send-receive:', paste(mids[mid], collapse='\t'))
+      stop(errMsg)
+    }
 
     result =
       lapply(1:nrow(sends), function(row) f_noSideEffects(sends[row], recvs[row]))
