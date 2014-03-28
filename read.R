@@ -558,13 +558,23 @@ tableToGraph = function(x, assignments){
     cat('Computation edges\n')
   ## replace computation vertices with weighted edges
   setkey(x, uid)
+  y = data.table::copy(x)
+  setkey(y, vertex)
   uids = x[is.na(name), uid]
   edges = rbindlist(mclapply(uids,
     function(u) {
       e=x[J(u)];
-      data.frame(src=x[J(unlist(e$deps))]$vertex,
-                 dest=x[J(unlist(e$succ))]$vertex,
-                 weight=e$duration)
+      result =
+        data.frame(src=x[J(unlist(e$deps))]$vertex,
+                   dest=x[J(unlist(e$succ))]$vertex,
+                   weight=e$duration)
+      if(any(is.na(y[J(result$src)]$name))){
+        cat('comp->comp!\n')
+        print(e)
+        print(y[J(c(result$src, result$dest))])
+        print(result)
+      }
+      return(result)
     }))
   ##predMap = hash(uids, edges$src)
   ##succMap = hash(uids, edges$dest)
@@ -595,9 +605,11 @@ tableToGraph = function(x, assignments){
   setkey(x, uid)
   sel = x[sapply(x$deps, length) > 0, uid]
 
+  f2 = function(d) data.frame(src=x[J(d)]$vertex, dest=uDest)
   f = function(u){
-    f2 = function(d) data.frame(src=x[J(d)]$vertex, dest=x[J(u)]$vertex)
-    rbindlist(lapply(x[J(u)]$deps, f2))
+    xu = x[J(u)]
+    uDest = xu$vertex
+    rbindlist(lapply(xu$deps, f2))
   }
 
   if(debug)
