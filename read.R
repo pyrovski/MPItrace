@@ -444,17 +444,33 @@ deps = function(x){
       setnames(commMap, names(commMap), c('rank', 'comm', 'unifiedComm'))
       setkey(commMap, rank, comm)
 
-      parentSel = which(commTable$parentComm %in% commMap$comm)
-      if(length(parentSel))
-        commTable[parentSel]$parentComm =
-          commMap[commTable[parentSel, list(rank, comm=parentComm)]]$unifiedComm
+      ##!@todo use d for selection
+      ## childSel = commTable[d, which=T]
+      ## if(length(childSel)){
+      ##   setkey(commTable, rank, childComm)
+      ##   commTable[childSel]$childComm =
+      ##     commMap[commTable[childSel, list(rank, comm=childComm)]]$unifiedComm
+      ## }
 
-      setkey(commTable, rank, childComm)
-      childSel = which(commTable$childComm %in% commMap$comm)
-      if(length(childSel)){
-        commTable[childSel]$childComm =
-          commMap[commTable[childSel, list(rank, comm=childComm)]]$unifiedComm
+      f = function(row){
+        sel =
+          commTable[parentComm == row$childComm &
+                    source >= row$source &
+                    source <= row$sink, which=T]
+        if(length(sel))
+          commTable[sel, parentComm := row$unifiedComm]
       }
+      setkeyv(commTable, key(d))
+      childSel = commTable[d, which=T]
+
+      rowApply(commTable[d], f)
+      
+      ## parentSel = c();
+      ## if(length(parentSel)){
+      ##   setkey(commTable, rank, parentComm)
+      ##   commTable[parentSel]$parentComm =
+      ##     commMap[commTable[parentSel, list(rank, comm=parentComm)]]$unifiedComm
+      ## }
 
       setkeyv(commTable, key(d))
       commTable[d, done := T]
@@ -479,10 +495,7 @@ deps = function(x){
       rm(translate)
     
       ## if more entries in current comm, continue
-      d = data.table(parentComm = comm, done=F)
-      setkey(d)
-      setkey(commTable, parentComm, done)
-      if(nrow(commTable[d]))
+      if(nrow(commTable[parentComm == comm & !done]))
         commList = c(comm, commList)
       
       ##!@todo get next comm (must be a child comm by definition)
@@ -490,8 +503,6 @@ deps = function(x){
       commList = c(commList, derivedParents)
     }
     commTable$done = NULL
-    commTable$unifiedComm = NULL
-    rm(commMap)
   } ## if commTable not empty
   
   if(debug)
@@ -608,4 +619,3 @@ run = function(path='.'){
   g = tableToGraph(b$runtimes)
   return(b)
 }
-
