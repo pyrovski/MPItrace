@@ -223,50 +223,65 @@ readAll = function(path='.'){
   ## nonblocking successful tests, and request frees
   if(debug)
     cat('Rank', rank, 'requests\n')
-  sources =
-    x[name %in% MPI_req_sources, which=T]
+
   ## only entries with requests
-  sources =
-    intersect(sources,
-              which(sapply(x$reqs, function(x) !all(is.na(x)))))
+  setkey(x, uid)
+  reqUIDs = x[!is.na(reqs), uid]
+  sources = intersect(x[name %in% MPI_req_sources, uid], reqUIDs)
+  sinks = intersect(x[name %in% MPI_req_sinks, uid], reqUIDs)
   
-  sinks =
-    x[name %in% MPI_req_sinks, which=T]
-  ## only entries with requests
-  sinks =
-    intersect(sinks,
-              which(sapply(x$reqs, function(x) !all(is.na(x)))))
-
-  reqs = sort(c(sinks, sources))
-
   if(length(sinks)){
-    sinkReqs = unique(unlist(x[sinks]$reqs))
+    sinkReqs = unique(unlist(x[J(sinks)]$reqs))
 
     ##!@todo speed this up.  I need to find source->sink pairs quickly.
     ## for each request sink, find its source
     ## double-link sinks and sources for later matching of messages
-    sinkIndex = 1
+    sinkCount = 1
     for(req in sinkReqs){
-      if(debug && !(sinkIndex %% 100))
-        cat('Rank', rank, 'sink request', sinkIndex, 'of', length(sinkReqs), '\n')
+      if(debug && !(sinkCount %% 100))
+        cat('Rank', rank, 'sink request', sinkCount, 'of', length(sinkReqs), '\n')
+      ## uids
       reqFound =
-        reqs[sapply(x[reqs]$reqs, function(x) req %in% x)]
-###      cat('Rank', rank, 'reqFound:', reqFound, '\n')
+        reqUIDs[sapply(x[J(reqUIDs)]$reqs, function(x) req %in% x)]
       sourced = F
       for(i in reqFound){
-        if(x[i]$name %in% MPI_req_sources){
+        if(x[J(i)]$name %in% MPI_req_sources){
           sourced = T
-          last = i
+          last = i ## uid
         } else if(sourced){ ## sink
-          x$brefs[[i]] = union(unlist(x[i]$brefs), x$uid[last])
-          x[last]$fref = x$uid[i]
+          sourceIndex = x[J(last), which=T]
+          sinkIndex = x[J(i), which=T]
+          x[sinkIndex, list(brefs = as.list(union(unlist(x[sinkIndex]$brefs), last)))]
+          x[sourceIndex, fref := i]
+          if(x[sourceIndex]$tag == MPI_ANY_TAG ||
+             x[sourceIndex]$src == MPI_ANY_SOURCE){
+            matchIndex = which(x[sinkIndex]$reqs == req)
+            resolvedTag = x[sinkIndex]$tag[matchIndex]
+            resolvedSrc = x[sinkIndex]$src[matchIndex]
+            x[sourceIndex, list(tag=resolvedTag, src=resolvedSrc)]
+            cat('resolved tag and source for req', req, '\n')
+          }
           sourced = F
         }
       }
-      sinkIndex = sinkIndex + 1
+      sinkCount = sinkCount + 1
     }
   }
-  x[,reqs:=NULL]
+  if(!debug)
+    x[,reqs:=NULL]
+  ## remove src and tag from req sinks, convert back from list
+  x$src = unlist(rowApply(x, function(row){
+    if(row$name %in% MPI_req_sinks)
+      as.integer(NA)
+    else
+      row$src
+  }))
+  x$tag = unlist(rowApply(x, function(row){
+    if(row$name %in% MPI_req_sinks)
+      as.integer(NA)
+    else
+      row$tag
+    }))
   cat('Rank', rank, 'done\n')
   return(list(runtimes = x, comms = commTable))
 }
@@ -384,7 +399,6 @@ deps = function(x){
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
  
-  ##!@todo order by topological sort after all dependecies done
   x = rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
   ranks = sort(unique(x$rank))
 
@@ -613,10 +627,10 @@ tableToGraph = function(x, assignments){
   setkey(x, uid)
   sel = x[sapply(x$deps, length) > 0, uid]
 
-  f2 = function(d) data.frame(src=x[J(d)]$vertex, dest=uDest)
   f = function(u){
     xu = x[J(u)]
     uDest = xu$vertex
+    f2 = function(d) data.frame(src=x[J(d)]$vertex, dest=uDest)
     rbindlist(lapply(xu$deps, f2))
   }
 
@@ -643,5 +657,5 @@ run = function(path='.'){
   a = readAll(path)
   b = messageDeps(deps(preDeps(a$runtimes)))
   g = tableToGraph(b$runtimes)
-  return(b)
+  return(list(runtimes = b, graph = g))
 }
