@@ -301,7 +301,7 @@ messageDeps = function(x){
 
   if(nrow(mids) < 1){
     cat('no messages\n')
-    return(list(runtimes=x, comms=commTable))
+    return(x)
   }
 
   f_noSideEffects = function(s, r){
@@ -432,10 +432,6 @@ deps = function(x){
     
     commTable$source = unlist(commTable$source)
     commTable$sink = unlist(commTable$sink)
-
-    ## For now, assume only a single level of derived communicators.
-    if(any(commTable$parentComm != MPI_COMM_WORLD))
-      cat('Multiple-derived communicators not supported yet.\n')
 
     ## unify communicators
     commTable$done = F
