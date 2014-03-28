@@ -129,9 +129,9 @@ readAll = function(path='.'){
   ##! process ANY_SOURCE and ANY_TAG entries
   ##!@todo preserve ANY_SOURCE and ANY_TAG in new columns?
   ##!@todo resolve ANY_SOURCE and ANY_TAG for Irecv (not a problem in MCB)
-  sel = x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG
+  sel = (x$src == MPI_ANY_SOURCE | x$tag == MPI_ANY_TAG) & x$name == 'MPI_Recv'
   ##!@todo for replay, we need to know both the ANY_SOURCE for
-  ##! matching and the actual source to post the PMPI receive.
+  ##! matching and the actual source to post the PMPI receive?
   if(length(which(sel))){
     if(debug){
       cat('Rank', rank, 'deleting', length(which(sel)), 'duplicate ANY_SOURCE and ANY_TAG entries:\n')
