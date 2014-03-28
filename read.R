@@ -47,18 +47,23 @@ MPI_req_sinks =
     'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
     'MPI_Request_free', 'MPI_Cancel')
 
-MPI_req_sources =
-  c('MPI_Isend','MPI_Irecv','MPI_Irsend','MPI_Bsend_init',
+MPI_Isends =
+  c('MPI_Isend','MPI_Irsend','MPI_Bsend_init',
     'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init',
-    'MPI_Recv_init', 'MPI_Ibsend', 'MPI_Issend')
+    'MPI_Ibsend','MPI_Issend')
+
+MPI_Irecvs =
+  c('MPI_Irecv','MPI_Recv_init')
+
+MPI_req_sources =
+  c(MPI_Isends, MPI_Irecvs)
 
 MPI_Sends =
-  c('MPI_Send', 'MPI_Isend', 'MPI_Issend', 'MPI_Bsend', 'MPI_Rsend',
-    'MPI_Irsend', 'MPI_Ibsend', 'MPI_Ssend', 'MPI_Rsend_init',
-    'MPI_Ssend_init', 'MPI_Bsend_init', 'MPI_Send_init')
+  c('MPI_Send', 'MPI_Bsend', 'MPI_Rsend',
+    'MPI_Ssend', MPI_Isends)
 
 MPI_Recvs =
-  c('MPI_Recv', 'MPI_Irecv', 'MPI_Recv_init')
+  c('MPI_Recv', MPI_Irecvs)
 
 ## for Merlot, I have the following formula for message latency:
 ## 6.456e-06 + 2.478e-10 * size
@@ -288,17 +293,17 @@ messageDeps = function(x){
 
   setkey(x, src, dest, size, tag, comm)
   ## rbindlist makes shitty data tables?
-  srDeps = mclapply(1:nrow(mids), function(mid){
+  f = function(mid){
     matching = x[mids[mid]][order(uid)]
     canceled =
       x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
 ### ignore canceled requests and requests not waited for
-    matching = matching[!fref %in% canceled & !is.na(fref)]
+    matching = matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_req_sources]
     if(nrow(matching) < 1){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
     }
-      
+    
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
     if(debug)
@@ -313,7 +318,8 @@ messageDeps = function(x){
     result = as.data.frame(do.call(rbind, result))
     names(result) = c('src', 'dest')
     return(result)
-  })
+  }
+  srDeps = mclapply(1:nrow(mids), f)
   ## this is slower than rbindlist, but doesn't segfault
   srDeps = do.call(rbind, srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
