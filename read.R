@@ -16,6 +16,22 @@ if(debug){
 }
 options(datatable.nomatch=0)
 
+colClasses = c(
+  start='numeric',
+  duration='numeric',
+  name='character',
+  size='integer',
+  dest='integer',
+  src='character', ## converted later to integer
+  tag='character', ## converted later to integer
+  comm='character',
+  hash='character',
+  pkg_w='numeric',
+  pp0_w='numeric',
+  dram_w='numeric',
+  reqs='character' ## converted later to character list
+  )
+
 MPI_Comm_sources =
   c('MPI_Comm_dup', 'MPI_Comm_create', 'MPI_Comm_split')
 
@@ -75,21 +91,6 @@ readGlobal = function(path = '.', filename = "glog.dat"){
 
 readRuntime = function(filename){
   firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
-  colClasses = c(
-    start='numeric',
-    duration='numeric',
-    name='character',
-    size='integer',
-    dest='integer',
-    src='character', ## converted later to integer
-    tag='character', ## converted later to integer
-    comm='character',
-    hash='character',
-    pkg_w='numeric',
-    pp0_w='numeric',
-    dram_w='numeric',
-    reqs='character' ## converted later to character list
-    )
   a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
   a[size == MPI_UNDEFINED,]$size = NA
   a[dest == MPI_UNDEFINED,]$dest = NA
@@ -101,7 +102,7 @@ readRuntime = function(filename){
   a$tag = lapply(a$tag, function(x) {x[x == MPI_UNDEFINED] = NA; x})
 
   a$reqs = strsplit(a$reqs,',')
-  a[comm == '(nil)',comm:='']
+  ##a[comm == '(nil)',comm:='']
   return(a)
 }
 
@@ -124,7 +125,7 @@ readAll = function(path='.'){
 }
 
 ## single rank only!
-.deps = function(x, maxRank){
+.deps = function(x, maxRank, writeReplay=T, path='.'){
   ranks = unique(x$rank)
   if(length(ranks) > 1)
     stop('Too many ranks in deps()!')
@@ -282,17 +283,29 @@ readAll = function(path='.'){
     else
       row$tag
     }))
+  if(writeReplay){
+    cat('Rank', rank, 'writing replay\n')
+    ##!@todo the replay fscanf is going to trip on NAs
+    y = data.table::copy(x[, names(colClasses), with=F][order(start)])
+    y$reqs = unlist(lapply(y$reqs, paste, collapse=','))
+    write.table(y,
+                file=
+                file.path(path,
+                          paste('replay', sprintf('%06d', rank), 'dat', sep='.')),
+                quote=F, sep='\t', row.names=F, na='NaN')
+    rm(y)
+  }
   cat('Rank', rank, 'done\n')
   return(list(runtimes = x, comms = commTable))
 }
 
-preDeps = function(x){
+preDeps = function(x, ...){
   ranks = sapply(x, function(x) unique(x$rank))
   
   ## if(debug)
   ##   x = lapply(x, .deps, max(ranks))
   ## else
-  x = mclapply(x, .deps, maxRank=max(ranks))
+  x = mclapply(x, .deps, maxRank=max(ranks), ...)
   return(x)
 }
 
