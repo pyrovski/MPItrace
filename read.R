@@ -286,103 +286,6 @@ readAll = function(path='.'){
   return(list(runtimes = x, comms = commTable))
 }
 
-messageDeps = function(x){
-  ## match inter-rank messages. Messages (excluding MPI_ANY_SOURCE and
-  ## MPI_ANY_TAG) are uniquely identified by the following: source,
-  ## destination, size, tag, communicator, and order.  For
-  ## MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag and source at
-  ## run time.
-
-  commTable = x$comms
-  x = x$runtimes
-  
-  mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
-  mids = mids[complete.cases(mids)]
-
-  if(nrow(mids) < 1){
-    cat('no messages\n')
-    return(x)
-  }
-
-  f_noSideEffects = function(s, r){
-    if(!is.na(r$fref))
-      dest = r$fref
-    else
-      dest = r$uid
-    return(list(src=s$uid, dest=dest))
-  }
-
-  setkey(x, src, dest, size, tag, comm)
-  ## rbindlist makes shitty data tables?
-  f = function(mid){
-    matching = x[mids[mid]][order(uid)]
-    canceled =
-      x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
-### ignore canceled requests and requests not waited for
-    matching = matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_req_sources]
-    if(nrow(matching) < 1){
-      cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
-      return(data.frame())
-    }
-    
-    sends = matching[name %in% MPI_Sends]
-    recvs = matching[name %in% MPI_Recvs]
-    if(debug)
-      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
-    ## if a receive has a request, the send dependency leads to the
-    ## matching wait, test, or free
-    if(nrow(sends) != nrow(recvs)){
-      errMsg = paste('mismatched send-receive:', paste(mids[mid], collapse='\t'))
-      stop(errMsg)
-    }
-
-    result =
-      lapply(1:nrow(sends), function(row) f_noSideEffects(sends[row], recvs[row]))
-    result = as.data.frame(do.call(rbind, result))
-    names(result) = c('src', 'dest')
-    return(result)
-  }
-  srDeps = mclapply(1:nrow(mids), f)
-  ## this is slower than rbindlist, but doesn't segfault
-  srDeps = do.call(rbind, srDeps)
-  srDeps = as.data.table(lapply(srDeps, unlist))
-  
-  if(debug)
-    cat('Done finding message matches\n')
-
-  setkey(x, uid)
-  ## find indices with multiple references
-  setkey(srDeps, dest)
-  destRLE = rle(srDeps$dest)
-  multDests = destRLE$values[destRLE$lengths > 1]
-
-  ## complete the indices with single references
-  sel = setdiff(srDeps$dest, multDests)
-  if(length(sel)){
-    d = x$deps
-    d[x[J(sel), which=T]] = mapply(c, d[x[J(sel), which=T]], srDeps[J(sel)]$src, SIMPLIFY=F)
-    x$deps = d
-    rm(d)
-  }
-
-  ## complete the indices with multiple references
-  if(length(multDests)){
-    d = x$deps
-    sel = x[J(multDests), which=T]
-    d[sel] =
-      mapply(c, d[sel],
-             lapply(multDests,
-                    function(d) srDeps[J(d)]$src), SIMPLIFY=F)
-    x$deps = d
-    rm(d)
-  }
-    
-  if(debug)
-    cat('Done matching messages\n')
-
-  return(x)
-}
-
 preDeps = function(x){
   ranks = sapply(x, function(x) unique(x$rank))
   
@@ -568,6 +471,103 @@ deps = function(x){
 ### rank: rank of caller in MPI_COMM_WORLD
 ### ranks: list of MPI_COMM_WORLD ranks participating in new communicator
   return(list(runtimes = x, comms = commTable))
+}
+
+messageDeps = function(x){
+  ## match inter-rank messages. Messages (excluding MPI_ANY_SOURCE and
+  ## MPI_ANY_TAG) are uniquely identified by the following: source,
+  ## destination, size, tag, communicator, and order.  For
+  ## MPI_ANY_SOURCE and MPI_ANY_TAG, we record the tag and source at
+  ## run time.
+
+  commTable = x$comms
+  x = x$runtimes
+  
+  mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
+  mids = mids[complete.cases(mids)]
+
+  if(nrow(mids) < 1){
+    cat('no messages\n')
+    return(x)
+  }
+
+  f_noSideEffects = function(s, r){
+    if(!is.na(r$fref))
+      dest = r$fref
+    else
+      dest = r$uid
+    return(list(src=s$uid, dest=dest))
+  }
+
+  setkey(x, src, dest, size, tag, comm)
+  ## rbindlist makes shitty data tables?
+  f = function(mid){
+    matching = x[mids[mid]][order(uid)]
+    canceled =
+      x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
+### ignore canceled requests and requests not waited for
+    matching = matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_req_sources]
+    if(nrow(matching) < 1){
+      cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
+      return(data.frame())
+    }
+    
+    sends = matching[name %in% MPI_Sends]
+    recvs = matching[name %in% MPI_Recvs]
+    if(debug)
+      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
+    ## if a receive has a request, the send dependency leads to the
+    ## matching wait, test, or free
+    if(nrow(sends) != nrow(recvs)){
+      errMsg = paste('mismatched send-receive:', paste(mids[mid], collapse='\t'))
+      stop(errMsg)
+    }
+
+    result =
+      lapply(1:nrow(sends), function(row) f_noSideEffects(sends[row], recvs[row]))
+    result = as.data.frame(do.call(rbind, result))
+    names(result) = c('src', 'dest')
+    return(result)
+  }
+  srDeps = mclapply(1:nrow(mids), f)
+  ## this is slower than rbindlist, but doesn't segfault
+  srDeps = do.call(rbind, srDeps)
+  srDeps = as.data.table(lapply(srDeps, unlist))
+  
+  if(debug)
+    cat('Done finding message matches\n')
+
+  setkey(x, uid)
+  ## find indices with multiple references
+  setkey(srDeps, dest)
+  destRLE = rle(srDeps$dest)
+  multDests = destRLE$values[destRLE$lengths > 1]
+
+  ## complete the indices with single references
+  sel = setdiff(srDeps$dest, multDests)
+  if(length(sel)){
+    d = x$deps
+    d[x[J(sel), which=T]] = mapply(c, d[x[J(sel), which=T]], srDeps[J(sel)]$src, SIMPLIFY=F)
+    x$deps = d
+    rm(d)
+  }
+
+  ## complete the indices with multiple references
+  if(length(multDests)){
+    d = x$deps
+    sel = x[J(multDests), which=T]
+    d[sel] =
+      mapply(c, d[sel],
+             lapply(multDests,
+                    function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    x$deps = d
+    rm(d)
+  }
+    
+  if(debug)
+    cat('Done matching messages\n')
+
+  return(x)
 }
 
 ### vertices and edges with attributes.
