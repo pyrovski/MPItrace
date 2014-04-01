@@ -183,7 +183,7 @@ readAll = function(path='.'){
       parentComm = x[s,comm]
       childComm = x[s+1,comm]
       newSize = x[s+1,size]
-      newRank = x[s+1,tag]
+      newRank = unlist(x[s+1,tag])
       source = x[s, uid]
       if(childComm == MPI_COMM_NULL)
         sink = as.numeric(NA)
