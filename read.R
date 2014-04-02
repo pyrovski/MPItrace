@@ -86,10 +86,11 @@ MPI_Recvs =
 latency = list(merlot = function(size) 6.456e-6 + 2.478e-10 * size)
 
 readGlobal = function(path = '.', filename = "glog.dat"){
-  source(filename)
+  source(file.path(path, filename))
 }
 
-readRuntime = function(filename){
+readRuntime = function(filename, path='.'){
+  filename = file.path(path, filename)
   firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
   a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
   a[size == MPI_UNDEFINED,]$size = NA
@@ -107,24 +108,30 @@ readRuntime = function(filename){
 }
 
 readAll = function(path='.'){
+  ##!@todo for comparing multiple runs, the globals may be different.
   readGlobal(path)
 
   ## runtime
   files = sort(list.files(path,'runtime.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
-  runtimes = lapply(files, readRuntime)
+  runtimes = lapply(files, readRuntime, path=path)
   names(runtimes) = ranks
   runtimes = napply(runtimes, function(x, name){x$rank = as.numeric(name);x})
 
   ## assignment
   files = sort(list.files(path,'assign.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
-  assignments = rbindlist(lapply(files, read.table, h=T))
+  assignments =
+    rbindlist(lapply(files, function(file)
+                     read.table(file.path(path, file), h=T)))
   
   return(list(runtimes=runtimes, assignments=assignments))
 }
 
 ## single rank only!
+
+## Writing replays is important because the resulting traces will have
+## resolved MPI_ANY_TAG and MPI_ANY_SOURCE.
 .deps = function(x, maxRank, writeReplay=T, path='.'){
   ranks = unique(x$rank)
   if(length(ranks) > 1)
@@ -664,7 +671,12 @@ shortStats = function(x, thresh=.001){
 
 run = function(path='.'){
   a = readAll(path)
-  b = messageDeps(deps(preDeps(a$runtimes)))
-  g = tableToGraph(b$runtimes)
-  return(list(runtimes = b, graph = g))
+  b = preDeps(a$runtimes)
+  b2 = deps(b)
+  b3 = messageDeps(b)
+  g = tableToGraph(b3$runtimes)
+  return(list(runtimes = b3,
+              graph = g,
+              assignments = a$assignments,
+              comms = b2$comms))
 }
