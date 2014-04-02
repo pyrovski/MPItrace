@@ -256,12 +256,12 @@ readAll = function(path='.'){
         reqUIDs[sapply(x[J(reqUIDs)]$reqs, function(x) req %in% x)]
       sourced = F
       for(i in reqFound){
-        if(x[J(i)]$name %in% MPI_req_sources){
+        sinkIndex = x[J(i), which=T]
+        if(x[sinkIndex]$name %in% MPI_req_sources){
           sourced = T
           last = i ## uid
         } else if(sourced){ ## sink
           sourceIndex = x[J(last), which=T]
-          sinkIndex = x[J(i), which=T]
           x[sinkIndex, list(brefs = as.list(union(unlist(x[sinkIndex]$brefs), last)))]
           x[sourceIndex, fref := i]
           if(x[sourceIndex]$tag == MPI_ANY_TAG ||
@@ -337,7 +337,7 @@ deps = function(x){
   x$deps[sel] = newUIDs[as.character(x$deps[sel])]
 
   sel = x[!is.na(succ), which=T]
-  x$succ[sel] = newUIDs[as.character(x$succ[sel])]
+  x$succ[sel] = unlist(newUIDs[as.character(x$succ[sel])])
 
   sel = which(!sapply(x$brefs, is.null))
   ##!@todo speed this up
@@ -604,7 +604,7 @@ tableToGraph = function(x, assignments){
       e=x[J(u)];
       result =
         data.frame(src=x[J(unlist(e$deps))]$vertex,
-                   dest=x[J(unlist(e$succ))]$vertex,
+                   dest=x[J(e$succ)]$vertex,
                    weight=e$duration)
       if(any(is.na(y[J(result$src)]$name))){
         cat('comp->comp!\n')
@@ -659,6 +659,36 @@ tableToGraph = function(x, assignments){
     cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
   
+  return(g)
+}
+
+tableToMarkov = function(x, rank=0){
+  .rank = rank
+  setkey(x, rank)
+  x = x[rank == .rank]
+  setkey(x, hash)
+  y = data.table::copy(x)
+  setkey(y, uid)
+  hashes = unique(x[!is.na(name) & name != 'MPI_Finalize']$hash)
+  vertices =  x[!is.na(name), list(label=unique(name)), by=hash]
+  edges =
+    rbindlist(
+      mclapply(hashes, function(h){
+      ## successor hashes
+      successors = y[J(y[J(x[J(h)]$succ)]$succ)]$hash
+      if(length(successors)){
+        successors = table(successors)
+        successors = 10*successors/sum(successors)
+        rbindlist(
+          lapply(1:length(successors), function(i)
+                 data.frame(src=h, dest=names(successors)[i],
+                            penwidth=successors[i], stringsAsFactors=F)))
+      } else
+        data.frame(src=character(0), dest=character(0), weight=numeric(0))
+    })
+      )
+  g = graph.data.frame(edges, vertices=vertices)
+  write.graph(g, file='markov.dot', format='dot')
   return(g)
 }
 
