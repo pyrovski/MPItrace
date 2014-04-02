@@ -464,17 +464,18 @@ deps = function(x){
   if(debug)
     cat('Collectives\n')
   collectives = intersect(x$name, setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
-  
+
   setkey(x, name, comm, rank)
   for(a_coll in collectives){
     instances = which(x$name == a_coll)
     u = unique(x[instances, list(name, comm)])
-    for(rank in ranks){
-      urank = c(u, rank=rank)
-      x[urank, vertex:=vid+(0:(nrow(.SD)-1))]
-      vidInc = nrow(x[urank])
+    setkey(u)
+    ## apply to all ranks in a comm at once
+    for(i in 1:nrow(u)){
+      row = u[i]
+      x[row, vertex:=vid+(0:(nrow(.SD)-1)), by=rank]
+      vid = max(x[row]$vertex) + 1
     }
-    vid = vid + vidInc
   }
 
   ## add vertices for intra-rank stuff
@@ -701,12 +702,17 @@ shortStats = function(x, thresh=.001){
 
 run = function(path='.'){
   a = readAll(path)
+  assignments = a$assignments
   b = preDeps(a$runtimes)
-  b2 = deps(b)
-  b3 = messageDeps(b2)
-  g = tableToGraph(b3)
-  return(list(runtimes = b3,
+  rm(a)
+  b = deps(b)
+  comms = b$comms
+  b2 = messageDeps(b)
+  rm(b)
+  g = tableToGraph(b2)
+  
+  return(list(runtimes = b2,
               graph = g,
-              assignments = a$assignments,
-              comms = b2$comms))
+              assignments = assignments,
+              comms = comms))
 }
