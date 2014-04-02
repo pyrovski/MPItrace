@@ -241,7 +241,10 @@ readAll = function(path='.'){
   if(length(sinks)){
     sinkReqs = unique(unlist(x[J(sinks)]$reqs))
 
-    ##!@todo speed this up.  I need to find source->sink pairs quickly.
+    ##!@todo speed this up. I need to find source->sink pairs
+    ##!quickly. We could use mclapply here if we merged the brefs
+    ##!lists after the fact, and set fref, tag, and src.
+    
     ## for each request sink, find its source
     ## double-link sinks and sources for later matching of messages
     sinkCount = 1
@@ -309,9 +312,6 @@ readAll = function(path='.'){
 preDeps = function(x, ...){
   ranks = sapply(x, function(x) unique(x$rank))
   
-  ## if(debug)
-  ##   x = lapply(x, .deps, max(ranks))
-  ## else
   x = mclapply(x, .deps, maxRank=max(ranks), ...)
   return(x)
 }
@@ -673,8 +673,8 @@ run = function(path='.'){
   a = readAll(path)
   b = preDeps(a$runtimes)
   b2 = deps(b)
-  b3 = messageDeps(b)
-  g = tableToGraph(b3$runtimes)
+  b3 = messageDeps(b2)
+  g = tableToGraph(b3)
   return(list(runtimes = b3,
               graph = g,
               assignments = a$assignments,
