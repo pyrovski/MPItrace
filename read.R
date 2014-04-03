@@ -1,5 +1,11 @@
 #!/usr/bin/env Rscript
 
+##!@todo use hash tables for multi-element columns? Apparently,
+## data.table in newer versions of R refuses to set keys on a data
+## table that contains list columns. There's a test with
+## isVectorAtomic() in reorder.c that fails on lists, even though the
+## documentations says lists are supported.
+
 source('~/local/bin/pbutils.R')
 
 require('data.table')
@@ -302,7 +308,7 @@ readAll = function(path='.'){
                 file=
                 file.path(path,
                           paste('replay', sprintf('%06d', rank), 'dat', sep='.')),
-                quote=F, sep='\t', row.names=F, na='NaN')
+                quote=F, sep='\t', row.names=F, na=as.character(MPI_UNDEFINED))
     rm(y)
   }
   cat('Rank', rank, 'done\n')
