@@ -4,7 +4,8 @@
 ## data.table in newer versions of R refuses to set keys on a data
 ## table that contains list columns. There's a test with
 ## isVectorAtomic() in reorder.c that fails on lists, even though the
-## documentations says lists are supported.
+## documentations says lists are supported. This is not present in the
+## most recent code (1.93), though.
 
 source('~/local/bin/pbutils.R')
 
