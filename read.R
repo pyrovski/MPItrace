@@ -303,7 +303,9 @@ readAll = function(path='.'){
   if(writeReplay){
     cat('Rank', rank, 'writing replay\n')
     ##!@todo the replay fscanf is going to trip on NAs
-    y = data.table::copy(x[, names(colClasses), with=F][order(start)])
+    cols = names(colClasses)
+    cols = grep('_w$', cols, v=T, invert=T)
+    y = data.table::copy(x[, cols, with=F][order(start)])
     y$reqs = unlist(lapply(y$reqs, paste, collapse=','))
     write.table(y,
                 file=
