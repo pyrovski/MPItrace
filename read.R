@@ -341,7 +341,7 @@ deps = function(x){
   x$fref[sel] = unlist(newUIDs[as.character(x$fref[sel])])
 
   sel = x[!is.na(deps), which=T]
-  x$deps[sel] = newUIDs[as.character(x$deps[sel])]
+  x$deps[sel] = unlist(newUIDs[as.character(x$deps[sel])])
 
   sel = x[!is.na(succ), which=T]
   x$succ[sel] = unlist(newUIDs[as.character(x$succ[sel])])
