@@ -94,6 +94,9 @@ latency = list(merlot = function(size) 6.456e-6 + 2.478e-10 * size)
 
 readGlobal = function(path = '.', filename = "glog.dat"){
   source(file.path(path, filename))
+  e = new.env()
+  source(file.path(path, filename), local=e)
+  assign('globals', as.list(e), envir=.GlobalEnv)
 }
 
 readRuntime = function(filename, path='.'){
@@ -663,7 +666,8 @@ tableToGraph = function(x, assignments){
   if(debug)
     cat('Communication edges\n')
   ## add communication edges
-  edges = rbind(edges, cbind(rbindlist(lapply(sel, f)), weight=0))
+  if(length(sel))
+    edges = rbind(edges, cbind(rbindlist(lapply(sel, f)), weight=0))
     
   if(debug)
     cat('Graph object\n')
@@ -709,7 +713,7 @@ shortStats = function(x, thresh=.001){
   cat(shortTimeRatio * 100, '% of time in short tasks\n')
 }
 
-run = function(path='.'){
+run = function(path='.', saveResult=F, name='merged.Rsave'){
   a = readAll(path)
   assignments = a$assignments
   b = preDeps(a$runtimes)
@@ -719,9 +723,14 @@ run = function(path='.'){
   b2 = messageDeps(b)
   rm(b)
   g = tableToGraph(b2)
-  
-  return(list(runtimes = b2,
-              graph = g,
-              assignments = assignments,
-              comms = comms))
+
+  result =
+    list(runtimes = b2,
+         graph = g,
+         assignments = assignments,
+         comms = comms,
+         globals=globals)
+  if(saveResult)
+    save(result, file=name)
+  return(result)
 }
