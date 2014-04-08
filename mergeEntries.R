@@ -48,6 +48,8 @@ entries = rbindlist(lapply(entries, function(entry){
   entry
 }))
 
-confCols = intersect(c('OMP_NUM_THREADS','ranks','command'), classes$name)
+confCols =
+  intersect(c('SLURM_NNODES','OMP_NUM_THREADS','ranks','command'),
+            classes$name)
 
 save(file=f_args[2], entries, confCols)
