@@ -182,18 +182,23 @@ readAll = function(path='.'){
   ## uid: unique identifier
   x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
 
+  assign('new_MPI_COMM_WORLD', '-1', envir=.GlobalEnv)
+  assign('new_MPI_COMM_NULL', '-2', envir=.GlobalEnv)
+  x[comm == MPI_COMM_WORLD]$comm = new_MPI_COMM_WORLD
+  x[comm == MPI_COMM_NULL]$comm = new_MPI_COMM_NULL
+  
   ## clean up duplicate communicator entries for comm creation
   ## tag: new rank
   ## msgSize: new size
   ## comm: new comm
   ## if not participating, new comm = MPI_COMM_NULL (will not free)
-  if(any(x$name %in% MPI_Comm_sources)){
+    if(any(x$name %in% MPI_Comm_sources)){
     ## remove duplicate communicator creation rows, add to a separate table
 
     ## old comm, new comm, new size, new rank, uid of sink
 
     sel =
-      x[name %in% MPI_Comm_sources & is.na(size) & comm != MPI_COMM_NULL,
+      x[name %in% MPI_Comm_sources & is.na(size) & comm != new_MPI_COMM_NULL,
         which=T]
 
     f = function(s) {
@@ -202,7 +207,7 @@ readAll = function(path='.'){
       newSize = x[s+1,size]
       newRank = unlist(x[s+1,tag])
       source = x[s, uid]
-      if(childComm == MPI_COMM_NULL)
+      if(childComm == new_MPI_COMM_NULL)
         sink = as.numeric(NA)
       else {
         sink = head(x[uid > x[s, uid] &
@@ -227,7 +232,7 @@ readAll = function(path='.'){
       lapply(commTable$source, function(r)
              as.integer(unlist(x[1 + x[uid == r, which=T], reqs])))
 
-    sel = x[!name %in% MPI_Comm_sources | is.na(size) & comm != MPI_COMM_NULL, which=T]
+    sel = x[!name %in% MPI_Comm_sources | is.na(size) & comm != new_MPI_COMM_NULL, which=T]
     x = x[sel]
   } else
     commTable = NULL
@@ -372,7 +377,7 @@ deps = function(x){
     commTable$done = F
     cid = 1
     
-    commList = list(MPI_COMM_WORLD)
+    commList = list(new_MPI_COMM_WORLD) ## -1 is new MPI_COMM_WORLD
     while(length(commList)){
       comm = commList[[1]]
       commList = tail(commList, -1)
@@ -384,7 +389,7 @@ deps = function(x){
       d$done = F
       setkey(d)
       sel = commTable[d, which=T]
-      sel = intersect(sel, commTable[childComm != MPI_COMM_NULL, which=T])
+      sel = intersect(sel, commTable[childComm != new_MPI_COMM_NULL, which=T])
 
       ## Handle multiple subcomms from the same collective. The
       ## selection represents a single collective call, but the
@@ -403,14 +408,6 @@ deps = function(x){
       setnames(commMap, names(commMap), c('rank', 'comm', 'unifiedComm'))
       setkey(commMap, rank, comm)
 
-      ##!@todo use d for selection
-      ## childSel = commTable[d, which=T]
-      ## if(length(childSel)){
-      ##   setkey(commTable, rank, childComm)
-      ##   commTable[childSel]$childComm =
-      ##     commMap[commTable[childSel, list(rank, comm=childComm)]]$unifiedComm
-      ## }
-
       f = function(row){
         sel =
           commTable[parentComm == row$childComm &
@@ -423,13 +420,6 @@ deps = function(x){
       childSel = commTable[d, which=T]
 
       rowApply(commTable[d], f)
-      
-      ## parentSel = c();
-      ## if(length(parentSel)){
-      ##   setkey(commTable, rank, parentComm)
-      ##   commTable[parentSel]$parentComm =
-      ##     commMap[commTable[parentSel, list(rank, comm=parentComm)]]$unifiedComm
-      ## }
 
       setkeyv(commTable, key(d))
       commTable[d, done := T]
@@ -735,15 +725,15 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   comms = b$comms
   b2 = messageDeps(b)
   rm(b)
-  g = tableToGraph(data.table::copy(b2))
+  ##g = tableToGraph(data.table::copy(b2))
 
   result =
     list(runtimes = b2,
-         graph = g,
+         ##graph = g,
          assignments = assignments,
          comms = comms,
          globals=globals)
   if(saveResult)
-    save(result, file=file.path(path,name))
+    with(result, save(list=ls(), file=file.path(path,name)))
   return(result)
 }
