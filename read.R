@@ -446,9 +446,12 @@ deps = function(x){
       setkey(commMap, rank, unifiedComm)
       setkey(translate, rank, childComm)
       ##!@todo test
-      translate[commMap, childComm := comm]
+      ##translate[commMap, childComm := comm]
       f = function(row)
-        x[uid >= row$source & uid <= row$sink & comm  == row$childComm,
+        x[uid >= row$source &
+          uid <= row$sink &
+          comm == row$childComm &
+          rank == row$rank,
           comm := row$unifiedComm]
       rowApply(translate, f)
       rm(translate)
@@ -517,7 +520,12 @@ messageDeps = function(x){
   x = x$runtimes
   
   mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
-  mids = mids[complete.cases(mids)]
+  sel = complete.cases(mids)
+  if(length(which(!sel))){
+    cat('Removing', length(which(!sel)), 'message IDs:\n')
+    print(mids[!sel])
+    mids = mids[sel]
+  }
 
   if(nrow(mids) < 1){
     cat('no messages\n')
@@ -539,7 +547,8 @@ messageDeps = function(x){
     canceled =
       x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
 ### ignore canceled requests and requests not waited for
-    matching = matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_req_sources]
+    matching =
+      matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_req_sources]
     if(nrow(matching) < 1){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
@@ -548,16 +557,20 @@ messageDeps = function(x){
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
     if(debug)
-      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends), 'messages\n')
+      cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends),
+          'messages\n')
     ## if a receive has a request, the send dependency leads to the
     ## matching wait, test, or free
     if(nrow(sends) != nrow(recvs)){
-      errMsg = paste('mismatched send-receive:', paste(mids[mid], collapse='\t'))
+      errMsg = paste('mismatched send-receive:\n',
+        paste(names(mids), collapse='\t'), '\n',
+        paste(mids[mid], collapse='\t'))
       stop(errMsg)
     }
 
     result =
-      lapply(1:nrow(sends), function(row) f_noSideEffects(sends[row], recvs[row]))
+      lapply(1:nrow(sends), function(row)
+             f_noSideEffects(sends[row], recvs[row]))
     result = as.data.frame(do.call(rbind, result))
     names(result) = c('src', 'dest')
     return(result)
@@ -676,7 +689,7 @@ tableToGraph = function(x, assignments){
   return(g)
 }
 
-tableToMarkov = function(x, rank=0){
+tableToMarkov = function(x, rank=0, path='.'){
   .rank = rank
   setkey(x, rank)
   x = x[rank == .rank]
@@ -716,13 +729,13 @@ shortStats = function(x, thresh=.001){
 run = function(path='.', saveResult=F, name='merged.Rsave'){
   a = readAll(path)
   assignments = a$assignments
-  b = preDeps(a$runtimes)
+  b = preDeps(a$runtimes, path=path)
   rm(a)
   b = deps(b)
   comms = b$comms
   b2 = messageDeps(b)
   rm(b)
-  g = tableToGraph(b2)
+  g = tableToGraph(data.table::copy(b2))
 
   result =
     list(runtimes = b2,
@@ -731,6 +744,6 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
          comms = comms,
          globals=globals)
   if(saveResult)
-    save(result, file=name)
+    save(result, file=file.path(path,name))
   return(result)
 }
