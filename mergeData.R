@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 
+##!@todo group by contents of command file
+
 source('~/local/bin/pbutils.R')
 source('./read.R')
 
@@ -13,7 +15,7 @@ confSpace = unique(entries[,entryCols,with=F])
 setkey(confSpace)
 setkeyv(entries, entryCols)
 
-countedConfSpace = entries[confSpace, list(count=nrow(.SD))]
+countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
 
 sel = which(!complete.cases(confSpace))
 if(length(sel)){
@@ -25,7 +27,7 @@ confSpace = na.omit(confSpace)
 confSpace$key = rowApply(confSpace, toKey)
 setkeyv(confSpace, entryCols)
 
-countedConfSpace = entries[confSpace, list(count=nrow(.SD))]
+countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
 
 g = function(entry){
   filename = file.path(entry$path, 'merged.Rsave')
@@ -115,7 +117,10 @@ f = function(conf){
     cat('Done matching hashes\n')
   }
 
-### Match requests between runs
+### Compute power consumption
+  
+  
+### Match requests between runs?
   
   runtimes
 }
@@ -126,7 +131,7 @@ f = function(conf){
 go = function(){
   merged <<- mcrowApply(confSpace, f)
   names(merged) <<- confSpace$key
-  save(merged, file='mergedData.Rsave')
+  save(merged, confSpace, countedConfSpace, entryCols, entries, file='mergedData.Rsave')
 }
 
 if(!interactive())
