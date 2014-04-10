@@ -13,7 +13,7 @@ confSpace = unique(entries[,entryCols,with=F])
 setkey(confSpace)
 setkeyv(entries, entryCols)
 
-countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
+countedConfSpace = entries[confSpace, list(count=nrow(.SD))]
 
 sel = which(!complete.cases(confSpace))
 if(length(sel)){
@@ -25,7 +25,7 @@ confSpace = na.omit(confSpace)
 confSpace$key = rowApply(confSpace, toKey)
 setkeyv(confSpace, entryCols)
 
-countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
+countedConfSpace = entries[confSpace, list(count=nrow(.SD))]
 
 g = function(entry){
   filename = file.path(entry$path, 'merged.Rsave')
@@ -128,3 +128,6 @@ go = function(){
   names(merged) <<- confSpace$key
   save(merged, file='mergedData.Rsave')
 }
+
+if(!interactive())
+  go()
