@@ -143,11 +143,12 @@ readRuntime = function(filename, path='.'){
   a[size == MPI_UNDEFINED,]$size = NA
   a[dest == MPI_UNDEFINED,]$dest = NA
 
+  f = function(x) {x[x == MPI_UNDEFINED] = NA; x}
   a$src = lapply(strsplit(a$src, ','), as.integer)
-  a$src = lapply(a$src, function(x) {x[x == MPI_UNDEFINED] = NA; x})
+  a$src = lapply(a$src, f)
   
   a$tag = lapply(strsplit(a$tag, ','), as.integer)
-  a$tag = lapply(a$tag, function(x) {x[x == MPI_UNDEFINED] = NA; x})
+  a$tag = lapply(a$tag, f)
 
   a$reqs = strsplit(a$reqs,',')
   ##a[comm == '(nil)',comm:='']
