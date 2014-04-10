@@ -88,9 +88,10 @@ MPI_Sends =
 MPI_Recvs =
   c('MPI_Recv', MPI_Irecvs)
 
-## for Merlot, I have the following formula for message latency:
-## 6.456e-06 + 2.478e-10 * size
-latency = list(merlot = function(size) 6.456e-6 + 2.478e-10 * size)
+latency =
+  list(merlot = function(size) 6.456e-6 + 2.478e-10 * size,
+       cab = function(size) 3.332e-5 + 3.108e-10 * size)
+
 e = new.env()
 load('acceptablePowerModel_conf_only.Rsave', envir=e)
 E5_2670_power_conf_only = get('m3', envir=e)
