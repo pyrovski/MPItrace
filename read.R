@@ -91,6 +91,43 @@ MPI_Recvs =
 ## for Merlot, I have the following formula for message latency:
 ## 6.456e-06 + 2.478e-10 * size
 latency = list(merlot = function(size) 6.456e-6 + 2.478e-10 * size)
+e = new.env()
+load('acceptablePowerModel_conf_only.Rsave', envir=e)
+E5_2670_power_conf_only = get('m3', envir=e)
+rm(e)
+
+activePower =
+  list(
+    E5_2670 =
+    function(threads,
+             cpu_freq = 2600000,
+             a_L3_access_rate,
+             C0_ratio,
+             mem_freq = 1600000,
+             SMT){
+      if(SMT)
+        cores = ceiling(threads/2)
+      else
+        cores = threads
+      
+      mcp = cpu_freq * mem_freq
+      mctp = mcp * threads
+      mcr = cpu_freq / mem_freq
+      mctr = mcr / threads
+      mcptr = mcp / threads      
+      mcrtp = mcr * threads
+
+      ## conf + perfctrs
+      ## return(3.496e1 + a_L3_access_rate*-2.77e-8 +
+      ##        cores*cpu_freq*2.662e-6 + a_L3_access_rate*C0_ratio*6.723e-8 +
+      ##        a_L3_access_rate*mcrtp*-4.469e-10 + mcp*mctp*6.959e-14
+      ##        )
+
+      ## conf only
+      x = data.frame(mem_freq, cores, cpu_freq, mctr, mcptr, SMT, mcp, mcrtp)
+      return(predict(E5_2670_power_conf_only, x))
+    })
+##idlePower = list(E5_2670 = function())
 
 readGlobal = function(path = '.', filename = "glog.dat"){
   source(file.path(path, filename))
