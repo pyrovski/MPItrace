@@ -64,11 +64,17 @@ f = function(conf){
     stop(errMsg)
   }
 
+  f = function(r, name){
+    r[[name]]$date = r$date
+    r[[name]]
+  }
+  
 ### Merge runtimes tables
-  runtimes = rbindlist(lapply(result, function(r){
-    r$runtimes$date = r$date
-    r$runtimes
-  }))
+  runtimes = rbindlist(lapply(result, f, name='runtimes'))
+
+  assignments = rbindlist(lapply(result, f, name='assignments'))
+
+  ##graphs = ;
 
   rm(result)
  
@@ -122,7 +128,7 @@ f = function(conf){
   
 ### Match requests between runs?
   
-  runtimes
+  list(runtimes=runtimes, assignments=assignments)
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
