@@ -90,7 +90,21 @@ MPI_Recvs =
 
 latency =
   list(merlot = function(size) 6.456e-6 + 2.478e-10 * size,
-       cab = function(size) 3.332e-5 + 3.108e-10 * size)
+       cab = function(size){
+         if(size < 4000)
+           1.608e-05
+         else
+           4.453e-05 + 3.109e-10 * size
+       })
+
+selfLatency =
+  list(merlot = latency[['merlot']],
+       cab = function(size){
+         if(size < 4000)
+           1.414e-06
+         else
+           -5.768e-05 + 1.722e-10 * size
+       })
 
 e = new.env()
 load('acceptablePowerModel_conf_only.Rsave', envir=e)
@@ -309,7 +323,10 @@ readAll = function(path='.'){
       reqFound =
         reqUIDs[sapply(x[J(reqUIDs)]$reqs, function(x) req %in% x)]
       sourced = F
+      reqCount = 1
       for(i in reqFound){
+        if(debug && !(reqCount %% 100))
+          cat('Rank', rank, 'request instance', reqCount, 'of', length(reqFound), '\n')
         sinkIndex = x[J(i), which=T]
         if(x[sinkIndex]$name %in% MPI_req_sources){
           sourced = T
@@ -328,6 +345,7 @@ readAll = function(path='.'){
           }
           sourced = F
         }
+        reqCount = reqCount + 1
       }
       sinkCount = sinkCount + 1
     }
@@ -423,7 +441,6 @@ deps = function(x){
       setkey(commTable, rank, source, done)
       sel = commTable[parentComm == comm & !done, which=T]
 
-      ##!@todo this doesn't handle terminal child comms yet
       d = commTable[sel,list(source=min(source)),by=rank]
       d$done = F
       setkey(d)
@@ -474,8 +491,6 @@ deps = function(x){
       translate = commTable[d]
       setkey(commMap, rank, unifiedComm)
       setkey(translate, rank, childComm)
-      ##!@todo test
-      ##translate[commMap, childComm := comm]
       f = function(row)
         x[uid >= row$source &
           uid <= row$sink &
@@ -489,7 +504,7 @@ deps = function(x){
       if(nrow(commTable[parentComm == comm & !done]))
         commList = c(comm, commList)
       
-      ##!@todo get next comm (must be a child comm by definition)
+      ## get next comm (must be a child comm by definition)
       derivedParents = intersect(commTable$parentComm, newUnified)
       commList = c(commList, derivedParents)
     }
@@ -646,7 +661,10 @@ messageDeps = function(x){
 }
 
 ### vertices and edges with attributes.
-tableToGraph = function(x, assignments){
+tableToGraph = function(x, assignments, saveGraph=T){
+
+  host = unique(sub('[[:digit:]]+', '', assignments$hostname))
+  
   if(debug)
     cat('Computation edges\n')
   ## replace computation vertices with weighted edges
@@ -681,8 +699,6 @@ tableToGraph = function(x, assignments){
 
   ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
 
-  ##!@todo add edge weights to communication edges
-  
   ## For the vertex frame, column 1 is the vertex name.
   ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
   vertices = x[, list(name, duration, rank, vertex)]
@@ -701,7 +717,15 @@ tableToGraph = function(x, assignments){
   f = function(u){
     xu = x[J(u)]
     uDest = xu$vertex
-    f2 = function(d) data.frame(src=x[J(d)]$vertex, dest=uDest)
+    f2 = function(d){
+      xd = x[J(d)]
+      weight =
+        if(xd$src == xu$dest)
+          selfLatency[[host]](xd$size)
+        else
+          latency[[host]](xd$size)
+      data.frame(src=xd$vertex, dest=uDest, weight)
+    }
     rbindlist(lapply(xu$deps, f2))
   }
 
@@ -709,12 +733,13 @@ tableToGraph = function(x, assignments){
     cat('Communication edges\n')
   ## add communication edges
   if(length(sel))
-    edges = rbind(edges, cbind(rbindlist(lapply(sel, f)), weight=0))
+    edges = rbind(edges, cbind(rbindlist(lapply(sel, f))))
     
   if(debug)
     cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
-  
+  if(saveGraph)
+    write.graph(g, file='graph.dot', format='dot')
   return(g)
 }
 
@@ -764,11 +789,12 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   comms = b$comms
   b2 = messageDeps(b)
   rm(b)
-  ##g = tableToGraph(data.table::copy(b2))
+  ## the graph serves as input to the LP?
+  g = tableToGraph(data.table::copy(b2), assignments)
 
   result =
     list(runtimes = b2,
-         ##graph = g,
+         graph = g,
          assignments = assignments,
          comms = comms,
          globals=globals)
