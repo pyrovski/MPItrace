@@ -111,25 +111,28 @@ load('acceptablePowerModel_conf_only.Rsave', envir=e)
 E5_2670_power_conf_only = get('m3', envir=e)
 rm(e)
 
+cpuMap = list(cab = 'E5_2670', merlot = 'E5_2670')
+
 ## For two sockets. Eventually, I would like to use one model per
 ## socket.
 activePower =
   list(
     E5_2670 =
     function(threads,
-             cpu_freq = 2600000,
+             cpu_freq = 2600000, ## kHz
+             mem_freq = 1600, ## MHz
+             SMT = F,
              a_L3_access_rate,
-             C0_ratio,
-             mem_freq = 1600000,
-             SMT){
+             C0_ratio
+             ){
       if(SMT)
         cores = ceiling(threads/2)
       else
         cores = threads
       
-      mcp = cpu_freq * mem_freq
+      mcp = cpu_freq * mem_freq * 1000
       mctp = mcp * threads
-      mcr = cpu_freq / mem_freq
+      mcr = cpu_freq / (mem_freq * 1000)
       mctr = mcr / threads
       mcptr = mcp / threads      
       mcrtp = mcr * threads
@@ -774,9 +777,56 @@ tableToMarkov = function(x, rank=0, path='.'){
   return(g)
 }
 
-### Populate power for each task. For now, only populate if no power
-### measurements are present.
+## Populate power for each task. For now, overwrite actual
+## measurements.
+##
+## Power numbers depend on how many sockets are used by each rank.
 modelPower = function(x, assignments){
+  host = unique(sub('[[:digit:]]+', '', assignments$hostname))
+  cpu = cpuMap[[host]]
+  fActivePower = activePower[[cpu]]
+  idlePower = idlePower[[cpu]]
+
+  x[, pkg_w:=NULL]
+  x[, pp0_w:=NULL]
+  x[, dram_w:=NULL]
+
+  hostCount = assignments[, list(count=nrow(.SD)), by=list(hostname)]
+
+  sharedHosts = hostCount[count > 1]$hostname
+  if(length(sharedHosts)){
+    cat('Power estimation with host sharing is not yet supported\n')
+    x$total_power = as.numeric(NA)
+    return(x)
+    
+    ## check for socket sharing
+    socketCount =
+      assignments[, list(count=nrow(.SD)), by=list(hostname, socket)]
+    if(any(socketCount$count > 1)){
+      cat('Cannot determine power; multiple ranks share a socket.')
+      x$total_power = as.numeric(NA)
+      return(x)
+    }
+
+    omp_socketSharing = sapply(sharedHosts, function(h){
+      sharedSockets =
+        do.call(intersect, assignments[hostname == h]$omp_sockets)
+      return(length(sharedSockets) > 0)
+    })
+    if(any(omp_socketSharing)){
+      cat('Cannot determine power; multiple ranks share a socket.')
+      x$total_power = as.numeric(NA)
+      return(x)
+    }
+  }
+  ## determine number of sockets in use by each rank
+
+  ##!@todo get thread count from instrumentation. For training runs,
+  ##it should be constant, but it could change within the application
+  ##between sections.
+  
+  ##x[, total_power := fActivePower(threads, cpu_freq)]
+  
   x
 }
 
