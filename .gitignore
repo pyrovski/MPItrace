@@ -35,3 +35,6 @@ shim_enumeration.h
 localConfig
 .R*
 *.w2
+*.dot
+*.freqs
+
