@@ -111,6 +111,8 @@ load('acceptablePowerModel_conf_only.Rsave', envir=e)
 E5_2670_power_conf_only = get('m3', envir=e)
 rm(e)
 
+## For two sockets. Eventually, I would like to use one model per
+## socket.
 activePower =
   list(
     E5_2670 =
@@ -132,17 +134,12 @@ activePower =
       mcptr = mcp / threads      
       mcrtp = mcr * threads
 
-      ## conf + perfctrs
-      ## return(3.496e1 + a_L3_access_rate*-2.77e-8 +
-      ##        cores*cpu_freq*2.662e-6 + a_L3_access_rate*C0_ratio*6.723e-8 +
-      ##        a_L3_access_rate*mcrtp*-4.469e-10 + mcp*mctp*6.959e-14
-      ##        )
-
       ## conf only
       x = data.frame(mem_freq, cores, cpu_freq, mctr, mcptr, SMT, mcp, mcrtp)
       return(predict(E5_2670_power_conf_only, x))
     })
-##idlePower = list(E5_2670 = function())
+## per socket
+idlePower = list(E5_2670 = 19.1)
 
 readGlobal = function(path = '.', filename = "glog.dat"){
   source(file.path(path, filename))
@@ -179,15 +176,19 @@ readAll = function(path='.'){
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
   runtimes = lapply(files, readRuntime, path=path)
   names(runtimes) = ranks
-  runtimes = napply(runtimes, function(x, name){x$rank = as.numeric(name);x})
+  runtimes =
+    napply(runtimes, function(x, name){x$rank = as.numeric(name);x})
 
   ## assignment
   files = sort(list.files(path,'assign.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
   assignments =
     rbindlist(lapply(files, function(file)
-                     read.table(file.path(path, file), h=T)))
-  
+                     read.table(file.path(path, file), h=T,
+                                stringsAsFactors=F)))
+  assignments$omp_sockets =
+    lapply(strsplit(assignments$omp_sockets, ','), as.integer)
+
   return(list(runtimes=runtimes, assignments=assignments))
 }
 
@@ -773,6 +774,12 @@ tableToMarkov = function(x, rank=0, path='.'){
   return(g)
 }
 
+### Populate power for each task. For now, only populate if no power
+### measurements are present.
+modelPower = function(x, assignments){
+  x
+}
+
 shortStats = function(x, thresh=.001){
   shortTaskRatio = nrow(x[duration < thresh])/nrow(x)
   shortTimeRatio = sum(x[duration < thresh, duration])/sum(x$duration)
@@ -789,6 +796,7 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   comms = b$comms
   b2 = messageDeps(b)
   rm(b)
+  b2 = modelPower(b2, assignments)
   ## the graph serves as input to the LP?
   g = tableToGraph(data.table::copy(b2), assignments)
 
