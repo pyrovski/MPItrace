@@ -846,7 +846,7 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   comms = b$comms
   b2 = messageDeps(b)
   rm(b)
-  b2 = modelPower(b2, assignments)
+  ##b2 = modelPower(b2, assignments)
   ## the graph serves as input to the LP?
   g = tableToGraph(data.table::copy(b2), assignments)
 
