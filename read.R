@@ -106,10 +106,10 @@ selfLatency =
            -5.768e-05 + 1.722e-10 * size
        })
 
-e = new.env()
-load('acceptablePowerModel_conf_only.Rsave', envir=e)
-E5_2670_power_conf_only = get('m3', envir=e)
-rm(e)
+#e = new.env()
+#load('acceptablePowerModel_conf_only.Rsave', envir=e)
+#E5_2670_power_conf_only = get('m3', envir=e)
+#rm(e)
 
 cpuMap = list(cab = 'E5_2670', merlot = 'E5_2670')
 
