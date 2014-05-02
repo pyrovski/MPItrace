@@ -70,16 +70,18 @@ MPI_req_sinks =
     'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
     'MPI_Request_free', 'MPI_Cancel')
 
+##!@todo handle MPI_Start, MPI_*_init
 MPI_Isends =
-  c('MPI_Isend','MPI_Irsend','MPI_Bsend_init',
-    'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init',
+  c('MPI_Isend','MPI_Irsend',
     'MPI_Ibsend','MPI_Issend')
 
 MPI_Irecvs =
-  c('MPI_Irecv','MPI_Recv_init')
+  c('MPI_Irecv')
 
+##! update shim_pre_1 when changing req_sources
 MPI_req_sources =
-  c(MPI_Isends, MPI_Irecvs)
+  c(MPI_Isends, MPI_Irecvs, 'MPI_Bsend_init',
+    'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init','MPI_Recv_init')
 
 MPI_Sends =
   c('MPI_Send', 'MPI_Bsend', 'MPI_Rsend',
@@ -249,7 +251,7 @@ readAll = function(path='.'){
   ## msgSize: new size
   ## comm: new comm
   ## if not participating, new comm = MPI_COMM_NULL (will not free)
-    if(any(x$name %in% MPI_Comm_sources)){
+  if(any(x$name %in% MPI_Comm_sources)){
     ## remove duplicate communicator creation rows, add to a separate table
 
     ## old comm, new comm, new size, new rank, uid of sink
@@ -311,6 +313,7 @@ readAll = function(path='.'){
   sinks = intersect(x[name %in% MPI_req_sinks, uid], reqUIDs)
   
   if(length(sinks)){
+    brefs = vector('list', length=nrow(x))
     sinkReqs = unique(unlist(x[J(sinks)]$reqs))
 
     ##!@todo speed this up. I need to find source->sink pairs
@@ -337,14 +340,15 @@ readAll = function(path='.'){
           last = i ## uid
         } else if(sourced){ ## sink
           sourceIndex = x[J(last), which=T]
-          x[sinkIndex, list(brefs = as.list(union(unlist(x[sinkIndex]$brefs), last)))]
+          brefs[[sinkIndex]] = as.list(union(unlist(brefs[[sinkIndex]]), last))
           x[sourceIndex, fref := i]
           if(x[sourceIndex]$tag == MPI_ANY_TAG ||
              x[sourceIndex]$src == MPI_ANY_SOURCE){
             matchIndex = which(x[sinkIndex]$reqs == req)
             resolvedTag = x[sinkIndex]$tag[matchIndex]
             resolvedSrc = x[sinkIndex]$src[matchIndex]
-            x[sourceIndex, list(tag=resolvedTag, src=resolvedSrc)]
+            x[sourceIndex, tag:=resolvedTag]
+            x[sourceIndex, src:=resolvedSrc]
             cat('resolved tag and source for req', req, '\n')
           }
           sourced = F
@@ -353,6 +357,8 @@ readAll = function(path='.'){
       }
       sinkCount = sinkCount + 1
     }
+    x$brefs = brefs
+    rm(brefs)
   }
   if(!debug)
     x[,reqs:=NULL]
@@ -419,10 +425,11 @@ deps = function(x){
 
   sel = which(!sapply(x$brefs, is.null))
   ##!@todo speed this up
-  x$brefs[sel] =
-    lapply(x$brefs[sel], function(x)
-           unlist(unname(newUIDs[sapply(x,as.character)])))
-
+  if(length(sel))
+    x$brefs[sel] =
+      lapply(x$brefs[sel], function(x)
+             unlist(unname(newUIDs[sapply(x,as.character)])))
+  
   if(debug)
     cat('Unifying communicators\n')
   if(nrow(commTable) > 0){
@@ -566,7 +573,8 @@ messageDeps = function(x){
 
   commTable = x$comms
   x = x$runtimes
-  
+
+  ##!@todo MPI_Start and MPI_Startall will be sends and/or receives
   mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
   sel = complete.cases(mids)
   if(length(which(!sel))){
@@ -581,11 +589,16 @@ messageDeps = function(x){
   }
 
   f_noSideEffects = function(s, r){
+    ## handle Isends and Irecvs by forwarding to corresponding MPI_Wait()s
     if(!is.na(r$fref))
       dest = r$fref
     else
       dest = r$uid
-    return(list(src=s$uid, dest=dest))
+    if(!is.na(s$fref))
+      src = s$fref
+    else
+      src = s$uid
+    return(list(src=src, dest=dest))
   }
 
   setkey(x, src, dest, size, tag, comm)
@@ -623,6 +636,7 @@ messageDeps = function(x){
     names(result) = c('src', 'dest')
     return(result)
   }
+  ## srDeps holds source and destination UIDs for matching messages
   srDeps = mclapply(1:nrow(mids), f)
   ## this is slower than rbindlist, but doesn't segfault
   srDeps = do.call(rbind, srDeps)
@@ -719,10 +733,27 @@ tableToGraph = function(x, assignments, saveGraph=T){
   sel = x[sapply(x$deps, length) > 0, uid]
 
   f = function(u){
+    ## xu = dest trace entry
     xu = x[J(u)]
     uDest = xu$vertex
     f2 = function(d){
+      stop("broken")
+      if(xu$name %in% MPI_req_sources){
+        ##destUIDs = sapply(xu$);
+      } else
+        actualDest = xu
+      
       xd = x[J(d)]
+      ## if dest is a request sink, determine which request is
+      ## responsible for this edge
+      if(xd$name %in% MPI_req_sinks){
+        
+      }
+      
+      ##!this weight calculation assumes the source and dest are send
+      ##!and receive. In reality, either may be an MPI_Wait().  @todo
+      ##!compute latency based on individual request IDs. This
+      ##!requires backtracking from the listed source and dest.
       weight =
         if(xd$src == xu$dest)
           selfLatency[[host]](xd$size)
@@ -848,11 +879,11 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   rm(b)
   ##b2 = modelPower(b2, assignments)
   ## the graph serves as input to the LP?
-  g = tableToGraph(data.table::copy(b2), assignments)
+  ##g = tableToGraph(data.table::copy(b2), assignments)
 
   result =
     list(runtimes = b2,
-         graph = g,
+         ##graph = g,
          assignments = assignments,
          comms = comms,
          globals=globals)
