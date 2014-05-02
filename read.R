@@ -688,7 +688,7 @@ messageDeps = function(x){
 ### vertices and edges with attributes.
 tableToGraph = function(x, assignments, messages, saveGraph=T){
 
-  host = unique(sub('[[:digit:]]+', '', assignments$hostname))
+  #host = unique(sub('[[:digit:]]+', '', assignments$hostname))
   
   if(debug)
     cat('Computation edges\n')
@@ -737,52 +737,33 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
 
   ## For the edge list frame, column 1 is the source and column 2 is the dest
   setkey(x, uid)
-  sel = x[sapply(x$deps, length) > 0, uid]
-
-  f = function(u){
-    ## xu = dest trace entry
-    xu = x[J(u)]
-    uDest = xu$vertex
-    f2 = function(d){
-      stop("broken")
-      if(xu$name %in% MPI_req_sources){
-        ##destUIDs = sapply(xu$);
-      } else
-        actualDest = xu
-      
-      xd = x[J(d)]
-      ## if dest is a request sink, determine which request is
-      ## responsible for this edge
-      if(xd$name %in% MPI_req_sinks){
-        
-      }
-      
-      ##!this weight calculation assumes the source and dest are send
-      ##!and receive. In reality, either may be an MPI_Wait() or
-      ##!MPI_Waitall(). In the latter case, there may be multiple
-      ##!messages between the two UIDs.
-      
-      ##!@todo compute latency based on individual request IDs. This
-      ##!requires backtracking from the listed source and dest.
-
-      ##!@todo uniquely identify message sources and destinations,
-      ##!including originating calls (req sources) and waits (req
-      ##!sinks)
-      weight =
-        if(xd$src == xu$dest)
-          selfLatency[[host]](xd$size)
-        else
-          latency[[host]](xd$size)
-      data.frame(src=xd$vertex, dest=uDest, weight)
-    }
-    rbindlist(lapply(xu$deps, f2))
+  setkey(assignments, rank)
+  ## assume all ranks run on a cluster with a single hostname prefix
+  uhost = unique(sub('[[:digit:]]+', '', assignments$hostname))
+  
+  ## compute message source and dest vertices with weight (latency)
+  f = function(row){
+    size = x[J(row$o_src)]$size
+    xs = x[J(row$src)]
+    xd = x[J(row$dest)]
+    src_vertex = xs$vertex
+    dest_vertex = xd$vertex
+    src_host = assignments[J(xs$rank), hostname]
+    dest_host = assignments[J(xd$rank), hostname]
+    
+    weight =
+      if(src_host == dest_host)
+        selfLatency[[uhost]](size)
+      else
+        latency[[uhost]](size)
+    data.frame(src=src_vertex, dest=dest_vertex, weight);
   }
-
+  
   if(debug)
     cat('Communication edges\n')
   ## add communication edges
-  if(length(sel))
-    edges = rbind(edges, cbind(rbindlist(lapply(sel, f))))
+  if(nrow(messages))
+    edges = rbind(edges, cbind(rbindlist(rowApply(messages, f))))
     
   if(debug)
     cat('Graph object\n')
