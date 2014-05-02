@@ -590,15 +590,21 @@ messageDeps = function(x){
 
   f_noSideEffects = function(s, r){
     ## handle Isends and Irecvs by forwarding to corresponding MPI_Wait()s
-    if(!is.na(r$fref))
+    if(!is.na(r$fref)){
       dest = r$fref
-    else
+      o_dest = r$uid
+    } else {
       dest = r$uid
-    if(!is.na(s$fref))
+      o_dest = dest
+    }
+    if(!is.na(s$fref)){
       src = s$fref
-    else
+      o_src = s$uid
+    } else {
       src = s$uid
-    return(list(src=src, dest=dest))
+      o_src = src
+    }
+    return(list(o_src=o_src, src=src, o_dest = o_dest, dest=dest))
   }
 
   setkey(x, src, dest, size, tag, comm)
@@ -633,7 +639,7 @@ messageDeps = function(x){
       lapply(1:nrow(sends), function(row)
              f_noSideEffects(sends[row], recvs[row]))
     result = as.data.frame(do.call(rbind, result))
-    names(result) = c('src', 'dest')
+    names(result) = c('o_src', 'src', 'o_dest', 'dest')
     return(result)
   }
   ## srDeps holds source and destination UIDs for matching messages
@@ -675,11 +681,12 @@ messageDeps = function(x){
   if(debug)
     cat('Done matching messages\n')
 
-  return(x)
+  ## "messages" columns are UIDs
+  return(list(runtimes=x, messages=srDeps))
 }
 
 ### vertices and edges with attributes.
-tableToGraph = function(x, assignments, saveGraph=T){
+tableToGraph = function(x, assignments, messages, saveGraph=T){
 
   host = unique(sub('[[:digit:]]+', '', assignments$hostname))
   
@@ -883,14 +890,16 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   b = deps(b)
   comms = b$comms
   b2 = messageDeps(b)
+  messages = b2$messages
+  b2 = b2$runtimes
   rm(b)
   ##b2 = modelPower(b2, assignments)
   ## the graph serves as input to the LP?
-  ##g = tableToGraph(data.table::copy(b2), assignments)
+  g = tableToGraph(data.table::copy(b2), assignments=assignments, messages=messages)
 
   result =
     list(runtimes = b2,
-         ##graph = g,
+         graph = g,
          assignments = assignments,
          comms = comms,
          globals=globals)
