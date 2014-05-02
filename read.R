@@ -191,11 +191,7 @@ readAll = function(path='.'){
     rbindlist(lapply(files, function(file)
                      read.table(file.path(path, file), h=T,
                                 stringsAsFactors=F)))
-  assignments$omp_sockets =
-    lapply(strsplit(assignments$omp_sockets, ','), as.integer)
-
-  return(list(runtimes=runtimes, assignments=assignments))
-}
+  return(list(runtimes=runtimes, assignments=assignments)) }
 
 ## single rank only!
 
@@ -585,7 +581,7 @@ messageDeps = function(x){
 
   if(nrow(mids) < 1){
     cat('no messages\n')
-    return(x)
+    return(list(runtimes=x, messages=NULL))
   }
 
   f_noSideEffects = function(s, r){
@@ -762,7 +758,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   if(debug)
     cat('Communication edges\n')
   ## add communication edges
-  if(nrow(messages))
+  if(!is.null(messages) && nrow(messages))
     edges = rbind(edges, cbind(rbindlist(rowApply(messages, f))))
     
   if(debug)
@@ -834,6 +830,7 @@ modelPower = function(x, assignments){
       return(x)
     }
 
+    ##!@todo omp_sockets is in string format; convert to integer list for comparison
     omp_socketSharing = sapply(sharedHosts, function(h){
       sharedSockets =
         do.call(intersect, assignments[hostname == h]$omp_sockets)

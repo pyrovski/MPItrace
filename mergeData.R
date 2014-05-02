@@ -39,13 +39,15 @@ g = function(entry){
   
   ## Read merged data.
   e = new.env()
-  load(filename, envir=e)
+  tryCatch(load(filename, envir=e),
+           error=function(e) cat('fin:', filename, entry$date, str(e), '\n'),
+           finally=NULL)
   result = as.list(e)
   result$date = entry$date
   return(result)
 }
 
-f = function(conf){
+mergeConfs = function(conf){
   print(conf)
   result = rowApply(entries[conf], g)
   
@@ -74,8 +76,10 @@ f = function(conf){
 
   assignments = rbindlist(lapply(result, f, name='assignments'))
 
-  ##graphs = ;
-
+  graphs = lapply(result, '[[', 'graph')
+  names(graphs) = lapply(result, '[[', 'date')
+  ##!@todo merge runtimes by config, then recreate graphs from merged runtimes
+  
   rm(result)
  
 ### Comms should already be unified; I mapped MPI_COMM_WORLD and
@@ -135,7 +139,7 @@ f = function(conf){
 ##!configurations one at a time.
 
 go = function(){
-  merged <<- mcrowApply(confSpace, f)
+  merged <<- mcrowApply(confSpace, mergeConfs)
   names(merged) <<- confSpace$key
   save(merged, confSpace, countedConfSpace, entryCols, entries, file='mergedData.Rsave')
 }
