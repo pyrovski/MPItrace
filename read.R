@@ -751,9 +751,16 @@ tableToGraph = function(x, assignments, saveGraph=T){
       }
       
       ##!this weight calculation assumes the source and dest are send
-      ##!and receive. In reality, either may be an MPI_Wait().  @todo
-      ##!compute latency based on individual request IDs. This
+      ##!and receive. In reality, either may be an MPI_Wait() or
+      ##!MPI_Waitall(). In the latter case, there may be multiple
+      ##!messages between the two UIDs.
+      
+      ##!@todo compute latency based on individual request IDs. This
       ##!requires backtracking from the listed source and dest.
+
+      ##!@todo uniquely identify message sources and destinations,
+      ##!including originating calls (req sources) and waits (req
+      ##!sinks)
       weight =
         if(xd$src == xu$dest)
           selfLatency[[host]](xd$size)
