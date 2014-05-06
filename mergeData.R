@@ -28,6 +28,7 @@ confSpace$key = rowApply(confSpace, toKey)
 setkeyv(confSpace, entryCols)
 
 countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
+measurementCols = c('duration','pkg_w','pp0_w','dram_w')
 
 g = function(entry){
   filename = file.path(entry$path, 'merged.Rsave')
@@ -44,6 +45,8 @@ g = function(entry){
            finally=NULL)
   result = as.list(e)
   result$date = entry$date
+  for(col in confCols)
+    result$runtimes[[col]] = entry[[col]]
   return(result)
 }
 
@@ -129,10 +132,42 @@ mergeConfs = function(conf){
 
 ### Compute power consumption
   
-  
 ### Match requests between runs?
+
+###!@todo match UIDs between runs
+### This requires a new UID scheme
+  uidCheck =
+    runtimes[,list(name, rank, uid, hash)][,lapply(.SD,function(col) length(unique(col))),.SDcols=c('name','hash'),by=list(uid)]
+  if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
+    stop(conf$key, ' failed UID check')
+  }
   
   list(runtimes=runtimes, assignments=assignments)
+}
+
+## combine within confCols combinations. This will combine multiple
+## runs with the same configuration.
+reduceConfs = function(x){
+  x$runtimes$date = NULL
+  x$runtimes$start = NULL
+  by = c('uid',confCols)
+  ## x$reduced =
+  ##   cbind(x$runtimes[,lapply(.SD[,c(measurementCols),
+  ##                                with=F], mean),
+  ##                    by=by],
+  ##         x$runtimes[,lapply(.SD[,setdiff(names(.SD),measurementCols),
+  ##                                with=F], unique),
+  ##                    by=by)
+  x$reduced =
+    x$runtimes[,lapply(.SD[,c(measurementCols),
+                                 with=F], mean),
+               by=by]
+  x$runtimes = x$runtimes[,setdiff(names(x$runtimes), measurementCols),with=F]
+  setkeyv(x$reduced, by)
+  setkeyv(x$runtimes, by)
+  x$reduced = x$runtimes[x$reduced,,mult='first']
+  x$runtimes = NULL
+  return(x)
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
@@ -141,7 +176,11 @@ mergeConfs = function(conf){
 go = function(){
   merged <<- mcrowApply(confSpace, mergeConfs)
   names(merged) <<- confSpace$key
-  save(merged, confSpace, countedConfSpace, entryCols, entries, file='mergedData.Rsave')
+  cat('Done merging configurations\n')
+  reduced <<- mclapply(merged, reduceConfs)
+  cat('Done reducing configurations\n')
+  save(measurementCols, reduced, merged, confSpace, countedConfSpace,
+       entryCols, entries, file='mergedData.Rsave')
 }
 
 if(!interactive())
