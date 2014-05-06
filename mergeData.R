@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 
 ##!@todo group by contents of command file
+options(mc.cores=16)
 
 source('~/local/bin/pbutils.R')
 source('./read.R')
@@ -35,6 +36,7 @@ g = function(entry){
   ## Does merged data exist?  If not, merge it.
   if(-1 == file.access(filename)){
     print(filename)
+    ##!@todo if on lc system, launch moab jobs for this
     run(path=entry$path, saveResult=T)
   } ##else cat('Merged data for', entry$date, 'already exists\n')
   
@@ -174,9 +176,11 @@ reduceConfs = function(x){
 ##!configurations one at a time.
 
 go = function(){
+  cat('Merging configurations\n')
   merged <<- mcrowApply(confSpace, mergeConfs)
   names(merged) <<- confSpace$key
   cat('Done merging configurations\n')
+  cat('Reducing configurations\n')
   reduced <<- mclapply(merged, reduceConfs)
   cat('Done reducing configurations\n')
   save(measurementCols, reduced, merged, confSpace, countedConfSpace,

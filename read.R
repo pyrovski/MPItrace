@@ -12,15 +12,12 @@ source('~/local/bin/pbutils.R')
 require('data.table')
 require('parallel')
 require('igraph')
-require('hash')
 
 adjWidth()
 
 debug=T
 
-if(debug){
-##  options(mc.cores=1)
-}
+options(mc.cores=16)
 options(datatable.nomatch=0)
 
 colClasses = c(
@@ -875,7 +872,10 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   rm(b)
   ##b2 = modelPower(b2, assignments)
   ## the graph serves as input to the LP?
-  g = tableToGraph(data.table::copy(b2), assignments=assignments, messages=messages)
+  if(!saveResult)
+    g = tableToGraph(data.table::copy(b2), assignments=assignments, messages=messages)
+  else
+    g = NA
 
   result =
     list(runtimes = b2,

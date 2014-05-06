@@ -48,7 +48,7 @@ entries = rbindlist(lapply(entries, function(entry){
   entry
 }))
 
-entries[, ranksPerNode:=ranks/SLURM_NNODES]
+entries[, ranksPerNode:=ceiling(ranks/SLURM_NNODES)]
 entries[, SLURM_NNODES:=NULL]
 
 entryCols =
