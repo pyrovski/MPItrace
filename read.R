@@ -235,7 +235,7 @@ readAll = function(path='.'){
   x$fref = as.numeric(NA)
 
   ## uid: unique identifier
-  x$uid = (1:nrow(x))+(rank+1)/(maxRank+1)
+  x$uid = (1:nrow(x))+(rank)/(maxRank+1)
 
   assign('new_MPI_COMM_WORLD', '-1', envir=.GlobalEnv)
   assign('new_MPI_COMM_NULL', '-2', envir=.GlobalEnv)
@@ -406,36 +406,36 @@ deps = function(x){
   ranks = sort(unique(x$rank))
 
   ## remap uids
-  newUIDs = as.list(1:nrow(x))
-  names(newUIDs) = x$uid
-  x$uid = unlist(newUIDs[as.character(x$uid)])
+  ## newUIDs = as.list(1:nrow(x))
+  ## names(newUIDs) = x$uid
+  ## x$uid = unlist(newUIDs[as.character(x$uid)])
 
-  sel = x[!is.na(fref), which=T]
-  x$fref[sel] = unlist(newUIDs[as.character(x$fref[sel])])
+  ## sel = x[!is.na(fref), which=T]
+  ## x$fref[sel] = unlist(newUIDs[as.character(x$fref[sel])])
 
-  sel = x[!is.na(deps), which=T]
-  x$deps[sel] = unlist(newUIDs[as.character(x$deps[sel])])
+  ## sel = x[!is.na(deps), which=T]
+  ## x$deps[sel] = unlist(newUIDs[as.character(x$deps[sel])])
 
-  sel = x[!is.na(succ), which=T]
-  x$succ[sel] = unlist(newUIDs[as.character(x$succ[sel])])
+  ## sel = x[!is.na(succ), which=T]
+  ## x$succ[sel] = unlist(newUIDs[as.character(x$succ[sel])])
 
-  sel = which(!sapply(x$brefs, is.null))
-  ##!@todo speed this up
-  if(length(sel))
-    x$brefs[sel] =
-      lapply(x$brefs[sel], function(x)
-             unlist(unname(newUIDs[sapply(x,as.character)])))
+  ## sel = which(!sapply(x$brefs, is.null))
+  ## ##!@todo speed this up
+  ## if(length(sel))
+  ##   x$brefs[sel] =
+  ##     lapply(x$brefs[sel], function(x)
+  ##            unlist(unname(newUIDs[sapply(x,as.character)])))
   
   if(debug)
     cat('Unifying communicators\n')
   if(nrow(commTable) > 0){
-    commTable$source = newUIDs[as.character(commTable$source)]
+    ## commTable$source = newUIDs[as.character(commTable$source)]
 
-    sel = which(!is.na(commTable$sink))
-    commTable$sink[sel] = newUIDs[as.character(commTable$sink[sel])]
+    ## sel = which(!is.na(commTable$sink))
+    ## commTable$sink[sel] = newUIDs[as.character(commTable$sink[sel])]
     
-    commTable$source = unlist(commTable$source)
-    commTable$sink = unlist(commTable$sink)
+    ## commTable$source = unlist(commTable$source)
+    ## commTable$sink = unlist(commTable$sink)
 
     ## unify communicators
     commTable$done = F
@@ -498,6 +498,8 @@ deps = function(x){
       translate = commTable[d]
       setkey(commMap, rank, unifiedComm)
       setkey(translate, rank, childComm)
+
+      ##!@todo this should be applied on a per-rank basis
       f = function(row)
         x[uid >= row$source &
           uid <= row$sink &
