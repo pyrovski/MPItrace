@@ -8,29 +8,6 @@ source('./read.R')
 
 require('data.table')
 
-## group experiments by entryCols from entries
-
-load('mergedEntries.Rsave')
-
-confSpace = unique(entries[,entryCols,with=F])
-setkey(confSpace)
-setkeyv(entries, entryCols)
-
-countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
-
-sel = which(!complete.cases(confSpace))
-if(length(sel)){
-  cat('Removing', length(sel), 'cases:\n')
-  print(countedConfSpace[sel])
-}
-confSpace = na.omit(confSpace)
-
-confSpace$key = rowApply(confSpace, toKey)
-setkeyv(confSpace, entryCols)
-
-countedConfSpace = entries[confSpace, list(count=nrow(.SD)), by=entryCols]
-measurementCols = c('duration','pkg_w','pp0_w','dram_w')
-
 g = function(entry){
   filename = file.path(entry$path, 'merged.Rsave')
   ## Does merged data exist?  If not, merge it.
@@ -176,14 +153,37 @@ reduceConfs = function(x){
 ##!configurations one at a time.
 
 go = function(){
+  ## group experiments by entryCols from entries
+
+  load('mergedEntries.Rsave', envir=.GlobalEnv)
+
+  entrySpace <<- unique(entries[,entryCols,with=F])
+  setkey(entrySpace)
+  setkeyv(entries, entryCols)
+
+  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
+
+  sel = which(!complete.cases(entrySpace))
+  if(length(sel)){
+    cat('Removing', length(sel), 'cases:\n')
+    print(countedEntryspace[sel])
+  }
+  entrySpace <<- na.omit(entrySpace)
+
+  entrySpace$key = rowApply(entrySpace, toKey)
+  setkeyv(entrySpace, entryCols)
+
+  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
+  measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
+
   cat('Merging configurations\n')
-  merged <<- mcrowApply(confSpace, mergeConfs)
-  names(merged) <<- confSpace$key
+  merged <<- mcrowApply(entrySpace, mergeConfs)
+  names(merged) <<- entrySpace$key
   cat('Done merging configurations\n')
   cat('Reducing configurations\n')
   reduced <<- mclapply(merged, reduceConfs)
   cat('Done reducing configurations\n')
-  save(measurementCols, reduced, merged, confSpace, countedConfSpace,
+  save(measurementCols, reduced, merged, entrySpace, countedEntryspace,
        entryCols, entries, file='mergedData.Rsave')
 }
 
