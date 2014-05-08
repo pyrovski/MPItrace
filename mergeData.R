@@ -83,36 +83,23 @@ mergeConfs = function(conf){
   }
     
 ### Construct hash maps; one table per rank with one column per run
-  setkey(runtimes, date, rank, uid)
-  ranks = (1:conf$ranks)-1
-  hashMaps = nnapply(ranks, function(r){
-    result = as.data.table(nnapply(dates, function(d){
-      unique(runtimes[J(d, r)]$hash)
-    }))
-  })
+  ## setkey(runtimes, date, rank, uid)
+  ## ranks = (1:conf$ranks)-1
+  ## hashMaps = nnapply(ranks, function(r){
+  ##   result = as.data.table(nnapply(dates, function(d){
+  ##     unique(runtimes[J(d, r)]$hash)
+  ##   }))
+  ## })
 
   fixDates = tail(dates, -1)
   masterDate = head(dates, 1)
-  if(length(fixDates) &&
-     any(sapply(hashMaps, function(h)
-                any(unlist(rowApply(h, function(row)
-                                    length(unique(unlist(row)))>1)))))){
-    ##!@todo test on runs with different hashes
-    cat('Matching hashes between', length(dates), 'runs\n')
-    setkey(runtimes, date, rank, hash)
-    lapply(ranks, function(r){
-      hashes = hashMaps[[as.character(r)]]
-      masterHashes = hashes[[masterDate]]
-      lapply(fixDates, function(d){
-        key = data.table(date = d, rank = r, hash = hashes[[d]])
-        masterKey = data.table(date = masterDate, rank = r, hash = masterHashes)
-        setkey(key)
-        setkey(masterKey)
-        runtimes[key]$hash = runtimes[masterKey]$hash
-      })
-    })
-    cat('Done matching hashes\n')
-  }
+  cat('Matching hashes between', length(dates), 'runs\n')
+  hashMaps = runtimes[date == masterDate, list(uid, rank, hash)]
+  setkey(hashMaps)
+  runtimes$hash = NULL
+  setkey(runtimes, uid, rank)
+  runtimes = runtimes[hashMaps]
+  cat('Done matching hashes\n')
 
 ### Compute power consumption
   
