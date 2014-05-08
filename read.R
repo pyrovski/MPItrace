@@ -762,9 +762,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   ## add communication edges
   if(!is.null(messages) && nrow(messages)){
     messageEdges = rbindlist(rowApply(messages, f))
-    messageEdges$power = as.numeric(NA)
-    messageEdges$uid = as.numeric(NA)
-    edges = rbind(compEdges, messageEdges)
+    edges = rbind(compEdges[,list(src,dest,weight)], messageEdges)
   } else
     messageEdges = NA
     

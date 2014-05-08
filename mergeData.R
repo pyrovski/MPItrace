@@ -106,15 +106,14 @@ mergeConfs = function(conf){
 ### Match requests between runs?
 
 ###!@todo match UIDs between runs
-### This requires a new UID scheme
-  uidCheck =
-    runtimes[,list(name, rank, uid, hash)][,lapply(.SD,function(col)
-                                                   length(unique(col))),
-                                           .SDcols=c('name','hash'),
-                                           by=list(uid)]
-  if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
-    stop(conf$key, ' failed UID check')
-  }
+  ## uidCheck =
+  ##   runtimes[,list(name, rank, uid, hash)][,lapply(.SD,function(col)
+  ##                                                  length(unique(col))),
+  ##                                          .SDcols=c('name','hash'),
+  ##                                          by=list(uid)]
+  ## if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
+  ##   stop(conf$key, ' failed UID check')
+  ## }
   
   list(runtimes=runtimes, assignments=assignments,
        messageEdges=messageEdges, compEdges=compEdges)
@@ -126,25 +125,33 @@ reduceConfs = function(x){
   x$runtimes$date = NULL
   x$runtimes$start = NULL
   by = c('uid',confCols)
-  ## x$reduced =
-  ##   cbind(x$runtimes[,lapply(.SD[,c(measurementCols),
-  ##                                with=F], mean),
-  ##                    by=by],
-  ##         x$runtimes[,lapply(.SD[,setdiff(names(.SD),measurementCols),
-  ##                                with=F], unique),
-  ##                    by=by)
-  x$reduced =
-    x$runtimes[,lapply(.SD[,c(measurementCols),
-                                 with=F], mean),
-               by=by]
-  x$runtimes = x$runtimes[,setdiff(names(x$runtimes), measurementCols),with=F]
-  setkeyv(x$reduced, by)
-  setkeyv(x$runtimes, by)
-  x$reduced = x$runtimes[x$reduced,,mult='first']
+  if(T){
+    nonMeasurementCols = setdiff(names(x$runtimes), measurementCols)
+    x$reduced =
+      x$runtimes[,lapply(.SD[,measurementCols,
+                             with=F], mean),
+                 by=by]
+    x$runtimes = x$runtimes[,nonMeasurementCols,with=F]
+    setkeyv(x$reduced, by)
+    setkeyv(x$runtimes, by)
+    x$reduced = x$runtimes[x$reduced,,mult='first']
+  } else {
+    ## this is slower by 3x.
+    nonMeasurementCols = setdiff(names(x$runtimes), c(by, measurementCols))
+    x$reduced =
+      x$runtimes[,c(lapply(.SD[,measurementCols,with=F],
+                           mean),
+                    lapply(.SD[,nonMeasurementCols,with=F],
+                           function(col) head(col,1))),
+                 by=by]
+  }
   x$runtimes = NULL
   ## all message edges should be identical between runs
   x$messageEdges = x$messageEdges[[1]]
   x$compEdges = rbindlist(x$compEdges)
+  x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
+  setkey(x$messageEdges)
+  x$edges = merge(x$messageEdges, x$compEdges, all=T)
   return(x)
 }
 
