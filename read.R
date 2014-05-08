@@ -20,6 +20,8 @@ debug=T
 options(mc.cores=16)
 options(datatable.nomatch=0)
 
+flagBits = list(omp=1)
+
 colClasses = c(
   start='numeric',
   duration='numeric',
@@ -692,13 +694,15 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   y = data.table::copy(x)
   setkey(y, vertex)
   uids = x[is.na(name), uid]
-  edges = rbindlist(mclapply(uids,
+  compEdges = rbindlist(mclapply(uids,
     function(u) {
       e=x[J(u)];
       result =
         data.frame(src=x[J(unlist(e$deps))]$vertex,
                    dest=x[J(e$succ)]$vertex,
-                   weight=e$duration)
+                   weight=e$duration,
+                   power=e$pkg_w+e$pp0_w+e$dram_w,
+                   uid=e$uid)
       if(any(is.na(y[J(result$src)]$name))){
         cat('comp->comp!\n')
         print(e)
@@ -707,9 +711,8 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
       }
       return(result)
     }))
-  ##predMap = hash(uids, edges$src)
-  ##succMap = hash(uids, edges$dest)
 
+  ## delete computation rows
   x = x[!is.na(name)]
 
   if(debug)
@@ -757,15 +760,20 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   if(debug)
     cat('Communication edges\n')
   ## add communication edges
-  if(!is.null(messages) && nrow(messages))
-    edges = rbind(edges, cbind(rbindlist(rowApply(messages, f))))
+  if(!is.null(messages) && nrow(messages)){
+    messageEdges = rbindlist(rowApply(messages, f))
+    messageEdges$power = as.numeric(NA)
+    messageEdges$uid = as.numeric(NA)
+    edges = rbind(compEdges, messageEdges)
+  } else
+    messageEdges = NA
     
   if(debug)
     cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
   if(saveGraph)
     write.graph(g, file='graph.dot', format='dot')
-  return(g)
+  return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges))
 }
 
 tableToMarkov = function(x, rank=0, path='.'){
@@ -872,14 +880,17 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   rm(b)
   ##b2 = modelPower(b2, assignments)
   ## the graph serves as input to the LP?
-  if(!saveResult)
-    g = tableToGraph(data.table::copy(b2), assignments=assignments, messages=messages)
-  else
-    g = NA
+  ##if(!saveResult)
+  g =
+    tableToGraph(data.table::copy(b2), assignments=assignments,
+                 messages=messages)
+  ##else
+  ##  g = NA
 
   result =
     list(runtimes = b2,
-         graph = g,
+         messageEdges = g$messageEdges,
+         compEdges = g$compEdges,
          assignments = assignments,
          comms = comms,
          globals=globals)

@@ -27,3 +27,8 @@ rlePower = function(powers){
   rbind(newPowers, as.data.table(list(start=max(powers$start), power=0)))
   ##newPowers
 }
+
+## return sets of indices for each timeslice
+timeslice = function(x, length=.01){
+  
+}

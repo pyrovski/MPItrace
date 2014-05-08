@@ -24,8 +24,10 @@ g = function(entry){
            finally=NULL)
   result = as.list(e)
   result$date = entry$date
-  for(col in confCols)
+  for(col in confCols){
     result$runtimes[[col]] = entry[[col]]
+    result$compEdges[[col]] = entry[[col]]
+  }
   return(result)
 }
 
@@ -58,8 +60,11 @@ mergeConfs = function(conf){
 
   assignments = rbindlist(lapply(result, f, name='assignments'))
 
-  graphs = lapply(result, '[[', 'graph')
-  names(graphs) = lapply(result, '[[', 'date')
+  messageEdges = lapply(result, '[[', 'messageEdges')
+  names(messageEdges) = lapply(result, '[[', 'date')
+  compEdges = lapply(result, '[[', 'compEdges')
+  names(compEdges) = lapply(result, '[[', 'date')
+
   ##!@todo merge runtimes by config, then recreate graphs from merged runtimes
   
   rm(result)
@@ -116,12 +121,16 @@ mergeConfs = function(conf){
 ###!@todo match UIDs between runs
 ### This requires a new UID scheme
   uidCheck =
-    runtimes[,list(name, rank, uid, hash)][,lapply(.SD,function(col) length(unique(col))),.SDcols=c('name','hash'),by=list(uid)]
+    runtimes[,list(name, rank, uid, hash)][,lapply(.SD,function(col)
+                                                   length(unique(col))),
+                                           .SDcols=c('name','hash'),
+                                           by=list(uid)]
   if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
     stop(conf$key, ' failed UID check')
   }
   
-  list(runtimes=runtimes, assignments=assignments)
+  list(runtimes=runtimes, assignments=assignments,
+       messageEdges=messageEdges, compEdges=compEdges)
 }
 
 ## combine within confCols combinations. This will combine multiple
@@ -146,6 +155,9 @@ reduceConfs = function(x){
   setkeyv(x$runtimes, by)
   x$reduced = x$runtimes[x$reduced,,mult='first']
   x$runtimes = NULL
+  ## all message edges should be identical between runs
+  x$messageEdges = x$messageEdges[[1]]
+  x$compEdges = rbindlist(x$compEdges)
   return(x)
 }
 
