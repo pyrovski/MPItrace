@@ -754,7 +754,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
         selfLatency[[uhost]](size)
       else
         latency[[uhost]](size)
-    data.frame(src=src_vertex, dest=dest_vertex, weight);
+    data.frame(src=src_vertex, dest=dest_vertex, weight, uid=row$o_src);
   }
   
   if(debug)
@@ -762,7 +762,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   ## add communication edges
   if(!is.null(messages) && nrow(messages)){
     messageEdges = rbindlist(rowApply(messages, f))
-    edges = rbind(compEdges[,list(src,dest,weight)], messageEdges)
+    edges = rbind(compEdges[,list(src,dest,weight,uid)], messageEdges)
   } else
     messageEdges = NA
     
