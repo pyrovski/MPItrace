@@ -39,7 +39,7 @@ timeslice = function(sched, start=0, length=.01, n=1){
   if(start > maxStart)
     stop('Start past last task')
   
-  sliceTimes = seq(start, maxStart, length)
+  sliceTimes = head(seq(start, maxStart, length), n)
 
   f = function(sliceTime){
     nextSlice = sliceTime + length
