@@ -21,6 +21,7 @@ options(mc.cores=16)
 options(datatable.nomatch=0)
 
 flagBits = list(omp=1)
+minDuration = .0000001
 
 colClasses = c(
   start='numeric',
@@ -235,7 +236,9 @@ readAll = function(path='.'){
 
   ## uid: unique identifier
   x$uid = (1:nrow(x))+(rank)/(maxRank+1)
-
+  
+  x[duration == 0, duration := minDuration]
+  
   assign('new_MPI_COMM_WORLD', '-1', envir=.GlobalEnv)
   assign('new_MPI_COMM_NULL', '-2', envir=.GlobalEnv)
   x[comm == MPI_COMM_WORLD]$comm = new_MPI_COMM_WORLD
