@@ -93,6 +93,7 @@ MPI_Recvs =
 latency =
   list(merlot = function(size) 6.456e-6 + 2.478e-10 * size,
        cab = function(size){
+###!@todo this difference could be due to a blocking threshold
          if(size < 4000)
            1.608e-05
          else
@@ -597,13 +598,13 @@ messageDeps = function(x){
       dest = r$uid
       o_dest = dest
     }
-    if(!is.na(s$fref)){
-      src = s$fref
-      o_src = s$uid
-    } else {
-      src = s$uid
-      o_src = src
-    }
+    ## if(!is.na(s$fref)){
+    ##   src = s$fref
+    ##   o_src = s$uid
+    ## } else {
+    src = s$uid
+    o_src = src
+    ##}
     return(list(o_src=o_src, src=src, o_dest = o_dest, dest=dest))
   }
 
