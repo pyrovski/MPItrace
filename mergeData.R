@@ -169,9 +169,11 @@ reduceConfs = function(x){
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   ts_order = topological.sort(g)
+  rm(g)
   setkey(x$vertices)
   x$vertices = x$vertices[J(gd$vertices[ts_order])]
   setkey(x$schedule, src)
+  rm(gd)
 
   ## edges in topological order
   ##x$schedule[J(x$vertices)]
@@ -186,7 +188,8 @@ reduceConfs = function(x){
       x$schedule[J(outEdges[row]$dest), start:=max(startTime, start)]
     }
   }
-  
+  setkey(x$schedule, start)
+###!@todo insert slack edges and new vertices?
   return(x)
 }
 
