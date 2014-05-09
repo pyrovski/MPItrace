@@ -188,7 +188,8 @@ reduceConfs = function(x){
       x$schedule[J(outEdges[row]$dest), start:=max(startTime, start)]
     }
   }
-  setkey(x$schedule, start)
+  setkey(x$schedule, start, weight)
+  x$schedule$e_uid = 1:nrow(x$schedule)
 ###!@todo insert slack edges and new vertices?
   return(x)
 }
