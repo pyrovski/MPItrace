@@ -152,6 +152,37 @@ reduceConfs = function(x){
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   setkey(x$messageEdges)
   x$edges = merge(x$messageEdges, x$compEdges, all=T)
+  x$vertices = x$reduced[!is.na(name),list(name=head(name,1)),by=vertex]
+  
+  ## Get an initial schedule, starting with minimum time per task.
+  x$schedule = r$edges[,.SD[which.min(weight)],by=list(uid)]
+  setcolorder(x$schedule,
+              c('src','dest',setdiff(names(x$schedule), c('src','dest'))))
+
+  ##!@todo get a src and dest rank for each edge to facilitate slack attribution
+
+  g = graph.data.frame(x$schedule)
+  gd = lapply(get.data.frame(g, what='both'), as.data.table)
+  gd$vertices$name = as.numeric(gd$vertices$name)
+  ts_order = topological.sort(g)
+  setkey(x$vertices)
+  x$vertices = x$vertices[J(gd$vertices[ts_order])]
+  setkey(x$schedule, src)
+
+  ## edges in topological order
+  ##x$schedule[J(x$vertices)]
+  x$schedule$start = -Inf
+
+  ## define a start time for each edge
+  x$schedule[J(x$vertices$vertex[1]), start:=max(0, start)]
+  for(vertex in x$vertices$vertex){
+    outEdges = x$schedule[J(vertex)]
+    for(row in 1:nrow(outEdges)){
+      startTime = outEdges[row, start + weight]
+      x$schedule[J(outEdges[row]$dest), start:=max(startTime, start)]
+    }
+  }
+  
   return(x)
 }
 
