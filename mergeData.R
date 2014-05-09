@@ -149,17 +149,21 @@ reduceConfs = function(x){
   ## all message edges should be identical between runs
   x$messageEdges = x$messageEdges[[1]]
   x$compEdges = rbindlist(x$compEdges)
+  by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   setkey(x$messageEdges)
   x$edges = merge(x$messageEdges, x$compEdges, all=T)
   x$vertices = x$reduced[!is.na(name),list(name=head(name,1)),by=vertex]
   
   ## Get an initial schedule, starting with minimum time per task.
-  x$schedule = r$edges[,.SD[which.min(weight)],by=list(uid)]
+  x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
   setcolorder(x$schedule,
               c('src','dest',setdiff(names(x$schedule), c('src','dest'))))
 
-  ##!@todo get a src and dest rank for each edge to facilitate slack attribution
+  ## get a src and dest rank for each edge to facilitate slack attribution
+  setkey(x$reduced, uid)
+  x$schedule$s_rank = x$reduced[J(x$schedule[, s_uid]), rank, mult='first']
+  x$schedule$d_rank = x$reduced[J(x$schedule[, d_uid]), rank, mult='first']
 
   g = graph.data.frame(x$schedule)
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
@@ -198,7 +202,8 @@ go = function(){
   setkey(entrySpace)
   setkeyv(entries, entryCols)
 
-  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
+  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
+                                by=entryCols]
 
   sel = which(!complete.cases(entrySpace))
   if(length(sel)){

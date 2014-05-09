@@ -700,13 +700,15 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   uids = x[is.na(name), uid]
   compEdges = rbindlist(mclapply(uids,
     function(u) {
-      e=x[J(u)];
+      s=x[J(u)]
+      d=x[J(s$succ)]
       result =
-        data.frame(src=x[J(unlist(e$deps))]$vertex,
-                   dest=x[J(e$succ)]$vertex,
-                   weight=e$duration,
-                   power=e$pkg_w+e$pp0_w+e$dram_w,
-                   uid=e$uid)
+        data.frame(src=x[J(unlist(s$deps))]$vertex,
+                   dest=d$vertex,
+                   weight=s$duration,
+                   power=s$pkg_w+s$pp0_w+s$dram_w,
+                   s_uid=s$uid,
+                   d_uid=d$uid)
       if(any(is.na(y[J(result$src)]$name))){
         cat('comp->comp!\n')
         print(e)
@@ -758,7 +760,12 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
         selfLatency[[uhost]](size)
       else
         latency[[uhost]](size)
-    data.frame(src=src_vertex, dest=dest_vertex, weight, uid=row$o_src);
+    data.frame(src=src_vertex,
+               dest=dest_vertex,
+               weight,
+               s_uid=row$o_src,
+### o_dest and dest uids should be on the same rank anyway
+               d_uid=row$dest);
   }
   
   if(debug)
@@ -766,7 +773,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   ## add communication edges
   if(!is.null(messages) && nrow(messages)){
     messageEdges = rbindlist(rowApply(messages, f))
-    edges = rbind(compEdges[,list(src,dest,weight,uid)], messageEdges)
+    edges = rbind(compEdges[,list(src,dest,weight,s_uid,d_uid)], messageEdges)
   } else
     messageEdges = NA
     
