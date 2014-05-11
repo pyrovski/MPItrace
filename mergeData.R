@@ -116,14 +116,10 @@ mergeConfs = function(conf){
   ## }
 
   confName = sub('/', '_', conf$key)
-  write.table(unique(runtimes[,list(uid)])[order(uid)],
-              file=paste(confName,'tasks.csv',sep='.'),
-              row.names=F, quote=F, sep=',')
   write.table(unique(runtimes[,confCols,with=F]),
               file=paste(confName,'confSpace.csv',sep='.'), quote=F,
               sep=',', row.names=F)
 
-  
   list(runtimes=runtimes, assignments=assignments,
        messageEdges=messageEdges, compEdges=compEdges)
 }
@@ -168,7 +164,7 @@ reduceConfs = function(x){
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
   setcolorder(x$schedule,
               c('src','dest',setdiff(names(x$schedule), c('src','dest'))))
-
+  
   ## get a src and dest rank for each edge to facilitate slack attribution
   setkey(x$reduced, uid)
   x$schedule$s_rank = x$reduced[J(x$schedule[, s_uid]), rank, mult='first']
@@ -199,7 +195,26 @@ reduceConfs = function(x){
   }
   setkey(x$schedule, start, weight)
   x$schedule$e_uid = 1:nrow(x$schedule)
+  confName = sub('/', '_', x$key)
+  write.table(x$schedule[,list(e_uid)][order(e_uid)],
+              file=paste(confName,'task_IDs.csv',sep='.'),
+              row.names=F, quote=F, sep=',')
+
+  setkey(x$schedule, s_uid, d_uid)
+  setkey(x$edges, s_uid, d_uid)
+  x$edges[x$schedule, e_uid:=e_uid]
+
 ###!@todo insert slack edges and new vertices?
+
+  firstCols = c('e_uid', confCols)
+  setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
+  write.table(x$edges[, c(firstCols, 'weight'), with=F],
+              file=paste(confName,'task_duration.csv',sep='.'),
+              row.names=F, quote=F, sep=',')
+  write.table(x$edges[, c(firstCols, 'power'), with=F],
+              file=paste(confName,'task_power.csv',sep='.'),
+              row.names=F, quote=F, sep=',')
+###!@todo how to get dependency information into Pyomo?
   return(x)
 }
 
@@ -216,11 +231,6 @@ go = function(){
   setkeyv(entries, entryCols)
 
   confSpace <<- unique(entries[,confCols,with=F])
-  ##!@todo this might contain more configurations than available for
-  ##!some benchmarks.
-  write.table(confSpace, file='confSpace.csv', quote=F, sep=',',
-              row.names=F)
-
   countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
                                 by=entryCols]
 
@@ -231,7 +241,7 @@ go = function(){
   }
   entrySpace <<- na.omit(entrySpace)
 
-  entrySpace$key = rowApply(entrySpace, toKey)
+  entrySpace$key <<- rowApply(entrySpace, toKey)
   setkeyv(entrySpace, entryCols)
 
   countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
@@ -240,6 +250,7 @@ go = function(){
   cat('Merging configurations\n')
   merged <<- mcrowApply(entrySpace, mergeConfs)
   names(merged) <<- entrySpace$key
+  lapply(names(merged), function(name) merged[[name]]$key<<-name)
   cat('Done merging configurations\n')
   cat('Reducing configurations\n')
   reduced <<- mclapply(merged, reduceConfs)
