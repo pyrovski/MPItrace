@@ -115,7 +115,7 @@ mergeConfs = function(conf){
   ##   stop(conf$key, ' failed UID check')
   ## }
 
-  confName = sub('/', '_', conf$key)
+  confName = gsub('[/.]', '_', conf$key)
   write.table(unique(runtimes[,confCols,with=F]),
               file=paste(confName,'confSpace.csv',sep='.'), quote=F,
               sep=',', row.names=F)
@@ -195,7 +195,7 @@ reduceConfs = function(x){
   }
   setkey(x$schedule, start, weight)
   x$schedule$e_uid = 1:nrow(x$schedule)
-  confName = sub('/', '_', x$key)
+  confName = gsub('[/.]', '_', x$key)
   write.table(x$schedule[,list(e_uid)][order(e_uid)],
               file=paste(confName,'task_IDs.csv',sep='.'),
               row.names=F, quote=F, sep=',')
@@ -208,11 +208,16 @@ reduceConfs = function(x){
 
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
+  
 ###!@todo is it possible to get this into pyomo as a single table?
-  lapply(c('weight','power','src','dest'), function(name)
-         write.table(x$edges[, c(firstCols, name), with=F],
-                     file=paste(confName,'.task_',name,'.csv',sep=''),
-                     row.names=F, quote=F, sep=','))
+###! Yes.  See PO from table.py tutorial
+  ## lapply(c('weight','power','src','dest'), function(name)
+  ##        write.table(x$edges[, c(firstCols, name), with=F],
+  ##                    file=paste(confName,'.task_',name,'.csv',sep=''),
+  ##                    row.names=F, quote=F, sep=','))
+  write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
+              file=paste(confName, '.edges.csv', sep=''),
+              row.names=F, quote=F, sep=',')
   return(x)
 }
 
