@@ -114,6 +114,15 @@ mergeConfs = function(conf){
   ## if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
   ##   stop(conf$key, ' failed UID check')
   ## }
+
+  confName = sub('/', '_', conf$key)
+  write.table(unique(runtimes[,list(uid)])[order(uid)],
+              file=paste(confName,'tasks.csv',sep='.'),
+              row.names=F, quote=F, sep=',')
+  write.table(unique(runtimes[,confCols,with=F]),
+              file=paste(confName,'confSpace.csv',sep='.'), quote=F,
+              sep=',', row.names=F)
+
   
   list(runtimes=runtimes, assignments=assignments,
        messageEdges=messageEdges, compEdges=compEdges)
@@ -206,6 +215,12 @@ go = function(){
   setkey(entrySpace)
   setkeyv(entries, entryCols)
 
+  confSpace <<- unique(entries[,confCols,with=F])
+  ##!@todo this might contain more configurations than available for
+  ##!some benchmarks.
+  write.table(confSpace, file='confSpace.csv', quote=F, sep=',',
+              row.names=F)
+
   countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
                                 by=entryCols]
 
@@ -230,7 +245,8 @@ go = function(){
   reduced <<- mclapply(merged, reduceConfs)
   cat('Done reducing configurations\n')
   save(measurementCols, reduced, merged, entrySpace, countedEntryspace,
-       entryCols, entries, file='mergedData.Rsave')
+       entryCols, entries, confSpace, confCols,
+       file='mergedData.Rsave')
 }
 
 if(!interactive())
