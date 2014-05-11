@@ -37,4 +37,7 @@ localConfig
 *.w2
 *.dot
 *.freqs
-
+*.csv
+*.pyc
+*.pdf
+\#*
