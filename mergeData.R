@@ -208,13 +208,11 @@ reduceConfs = function(x){
 
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
-  write.table(x$edges[, c(firstCols, 'weight'), with=F],
-              file=paste(confName,'task_duration.csv',sep='.'),
-              row.names=F, quote=F, sep=',')
-  write.table(x$edges[, c(firstCols, 'power'), with=F],
-              file=paste(confName,'task_power.csv',sep='.'),
-              row.names=F, quote=F, sep=',')
-###!@todo how to get dependency information into Pyomo?
+###!@todo is it possible to get this into pyomo as a single table?
+  lapply(c('weight','power','src','dest'), function(name)
+         write.table(x$edges[, c(firstCols, name), with=F],
+                     file=paste(confName,'.task_',name,'.csv',sep=''),
+                     row.names=F, quote=F, sep=','))
   return(x)
 }
 
