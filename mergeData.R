@@ -155,12 +155,18 @@ reduceConfs = function(x){
   ## all message edges should be identical between runs
   ##x$messageEdges = x$messageEdges[[1]]
   x$messageEdges = rbindlist(x$messageEdges)
+  by = c('s_uid','d_uid',confCols)
+  x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
 
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   setkey(x$messageEdges)
   x$edges = merge(x$messageEdges, x$compEdges, all=T)
+
+  ## set power to zero for message edges
+  x$edges[is.na(power), power:=0]
+  
   x$vertices = x$reduced[!is.na(name),list(name=head(name,1)),by=vertex]
   
   ## Get an initial schedule, starting with minimum time per task.
@@ -207,7 +213,9 @@ reduceConfs = function(x){
   setkey(x$edges, s_uid, d_uid)
   x$edges[x$schedule, e_uid:=e_uid]
 
-###!@todo insert slack edges and new vertices?
+###!@todo insert slack edges and new vertices. These edges should go
+###!in a separate table, as they are not affected by configuration
+###!changes.
 
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
