@@ -27,6 +27,7 @@ g = function(entry){
   for(col in confCols){
     result$runtimes[[col]] = entry[[col]]
     result$compEdges[[col]] = entry[[col]]
+    result$messageEdges[[col]] = entry[[col]]
   }
   return(result)
 }
@@ -152,7 +153,9 @@ reduceConfs = function(x){
   }
   x$runtimes = NULL
   ## all message edges should be identical between runs
-  x$messageEdges = x$messageEdges[[1]]
+  ##x$messageEdges = x$messageEdges[[1]]
+  x$messageEdges = rbindlist(x$messageEdges)
+
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
