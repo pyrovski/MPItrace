@@ -183,15 +183,13 @@ reduceConfs = function(x){
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   ts_order = topological.sort(g)
-  rm(g)
+
   setkey(x$vertices)
   x$vertices = x$vertices[J(gd$vertices[ts_order])]
-  setkey(x$schedule, src)
   rm(gd)
 
-  ## edges in topological order
-  ##x$schedule[J(x$vertices)]
   x$schedule$start = -Inf
+  setkey(x$schedule, src)
 
   ## define a start time for each edge
   x$schedule[J(x$vertices$vertex[1]), start:=max(0, start)]
@@ -208,6 +206,13 @@ reduceConfs = function(x){
   write.table(x$schedule[,list(e_uid)][order(e_uid)],
               file=paste(confName,'task_IDs.csv',sep='.'),
               row.names=F, quote=F, sep=',')
+
+  ## edges in topological order
+  ##x$schedule[J(x$vertices)]
+  ## critical path
+  setkey(x$schedule, src)
+  x$longestPath = longest.path(x$schedule[J(x$vertices)], x$vertices, g)
+  rm(g)
 
   setkey(x$schedule, s_uid, d_uid)
   setkey(x$edges, s_uid, d_uid)

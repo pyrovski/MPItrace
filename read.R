@@ -39,6 +39,8 @@ colClasses = c(
   reqs='character' ## converted later to character list
   )
 
+MPI_Inits = c('MPI_Init', 'MPI_Init_thread')
+
 MPI_Comm_sources =
   c('MPI_Comm_dup', 'MPI_Comm_create', 'MPI_Comm_split')
 
@@ -529,7 +531,7 @@ deps = function(x){
   ## init and finalize
   vid = 3
 
-  x[name %in% c('MPI_Init', 'MPI_Init_thread'), 'vertex'] = 1
+  x[name %in% MPI_Inits, 'vertex'] = 1
   x[name == 'MPI_Finalize', 'vertex'] = 2
 
   if(debug)

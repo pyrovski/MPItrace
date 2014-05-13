@@ -66,3 +66,36 @@ timeslice = function(sched, start=0, length=.01, n=1){
   result = lapply(sliceTimes, f)
   result
 }
+
+## edges should be in topological order
+longest.path = function(edges, vertices, graph){
+  if(!inherits(edges, 'data.table'))
+    stop('expected data.table')
+  if(!inherits(graph, 'igraph'))
+    stop('expected igraph')
+
+  vertices$longest = -Inf
+  vertices$via = as.numeric(NA)
+  setkey(vertices, vertex)
+  vertices[J(1), longest:=0] ## Init
+  for(row in 1:nrow(edges)){
+    r = edges[row]
+##    l = vertices[J(row$dest), longest]
+    srcLongest = vertices[J(r$src), longest] + r$weight
+    curLongest = vertices[J(r$dest), longest]
+    if(srcLongest > curLongest)
+      vertices[J(r$dest), via:=r$e_uid]
+    vertices[J(r$dest), longest:=max(srcLongest,curLongest)]
+  }
+
+  f = function(e){
+    via = vertices[J(edges[J(e),src]), via]
+    if(!is.na(via))
+      return(c(f(via), e))
+    else
+      e
+  }
+  
+  setkey(edges, e_uid)
+  f(vertices[name == 'MPI_Finalize', via])
+}
