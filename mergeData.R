@@ -5,6 +5,7 @@ options(mc.cores=16)
 
 source('~/local/bin/pbutils.R')
 source('./read.R')
+source('./util.R')
 
 require('data.table')
 
@@ -171,47 +172,24 @@ reduceConfs = function(x){
   
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
-  setcolorder(x$schedule,
-              c('src','dest',setdiff(names(x$schedule), c('src','dest'))))
+
+  schedule = getSchedule(x$schedule)
+  g = schedule$g
+  x$schedule = schedule$edges
+  rm(schedule)
   
-  ## get a src and dest rank for each edge to facilitate slack attribution
-  setkey(x$reduced, uid)
-  x$schedule$s_rank = x$reduced[J(x$schedule[, s_uid]), rank, mult='first']
-  x$schedule$d_rank = x$reduced[J(x$schedule[, d_uid]), rank, mult='first']
-
-  g = graph.data.frame(x$schedule)
-  gd = lapply(get.data.frame(g, what='both'), as.data.table)
-  gd$vertices$name = as.numeric(gd$vertices$name)
-  ts_order = topological.sort(g)
-
-  setkey(x$vertices)
-  x$vertices = x$vertices[J(gd$vertices[ts_order])]
-  rm(gd)
-
-  x$schedule$start = -Inf
-  setkey(x$schedule, src)
-
-  ## define a start time for each edge
-  x$schedule[J(x$vertices$vertex[1]), start:=max(0, start)]
-  for(vertex in x$vertices$vertex){
-    outEdges = x$schedule[J(vertex)]
-    for(row in 1:nrow(outEdges)){
-      startTime = outEdges[row, start + weight]
-      x$schedule[J(outEdges[row]$dest), start:=max(startTime, start)]
-    }
-  }
   setkey(x$schedule, start, weight)
   x$schedule$e_uid = 1:nrow(x$schedule)
 
-  ## edges in topological order
-  ##x$schedule[J(x$vertices)]
   ## critical path
   setkey(x$schedule, src)
 
-  ## store e_uid for edges on the longest path
+  ## store e_uid for edges on the longest path.
+  ## edges in topological order: x$schedule[J(x$vertices)]
   x$longestPath = longest.path(x$schedule[J(x$vertices)], x$vertices, g)
   rm(g)
-  
+
+  ## copy e_uid to edges
   setkey(x$schedule, s_uid, d_uid)
   setkey(x$edges, s_uid, d_uid)
   x$edges[x$schedule, e_uid:=e_uid]
@@ -222,6 +200,22 @@ reduceConfs = function(x){
   x$edges = slackEdges(x$edges, x$longestPath)
   x$edges[is.na(weight), weight:=0]
 
+  ## recompute schedule with slack edges
+  x$schedule = x$edges[,.SD[which.min(weight)],by=list(e_uid)]
+  ## get topological order again and add start times
+  schedule = getSchedule(x$schedule)
+  x$schedule = schedule$edges
+  x$vertices = schedule$vertices
+  rm(schedule)
+
+  ##!@todo get a src and dest rank for each edge to facilitate slack
+  ##!attribution. This should happen in edges, not schedule.
+  
+  ## setkey(x$reduced, uid)
+  ## x$schedule$s_rank = x$reduced[J(x$schedule[, s_uid]), rank, mult='first']
+  ## x$schedule$d_rank = x$reduced[J(x$schedule[, d_uid]), rank, mult='first']
+
+  
   confName = gsub('[/.]', '_', x$key)
   ## write edge uids
   write.table(unique(x$edges[,list(e_uid)])[order(e_uid)],

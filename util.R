@@ -108,6 +108,36 @@ minConf = function(confs){
   confs[power > 0][which.min(power)]
 }
 
+## orders vertices and edges in topological order and adds start time
+## to each edge.
+getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))]){
+  setcolorder(edges,
+              c('src','dest',setdiff(names(edges), c('src','dest'))))
+  g = graph.data.frame(edges)
+  gd = lapply(get.data.frame(g, what='both'), as.data.table)
+  gd$vertices$name = as.numeric(gd$vertices$name)
+  ts_order = topological.sort(g)
+
+  setkey(vertices)
+  vertices = vertices[J(gd$vertices[ts_order])]
+  rm(gd)
+
+  edges$start = -Inf
+  setkey(edges, src)
+
+  ## define a start time for each edge
+  edges[J(vertices$vertex[1]), start:=max(0, start)]
+  for(vertex in vertices$vertex){
+    outEdges = edges[J(vertex)]
+    for(row in 1:nrow(outEdges)){
+      startTime = outEdges[row, start + weight]
+      edges[J(outEdges[row]$dest), start:=max(startTime, start)]
+    }
+  }
+  edges = edges[J(vertices)]
+  return(list(edges=edges, vertices=vertices, graph=g))
+}
+
 slackEdges = function(edges, critPath){
   ##!@todo record active wait power in shim library, export to
   ##!glog.dat, and use for slack edges
