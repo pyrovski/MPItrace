@@ -30,7 +30,7 @@ rlePower = function(powers){
 
 ## return sets of indices for each timeslice and how much of each task
 ## is in each timeslice
-timeslice = function(sched, criticalPath, start=0, length=.01, n=1){
+timeslice = function(sched, edges, criticalPath, start=0, length=.01, n=1){
   if(n != 1)
     stop("Not implemented yet")
 
@@ -40,30 +40,45 @@ timeslice = function(sched, criticalPath, start=0, length=.01, n=1){
     stop('Start past last task')
   
   sliceTimes = head(seq(start, maxStart, length), n)
+  setkey(sched, e_uid)
+  setkey(edges, e_uid)
 
   f = function(sliceTime){
     nextSlice = sliceTime + length
-### There's a package for finding interval overlap, but we only do this once.
-    int = sched[start >= sliceTime & end <= nextSlice, which=T] ## interior
-    ext = sched[start <  sliceTime & end >  nextSlice, which=T] ## exterior
+### There's a package for finding interval overlap, but we only do
+### this once.
+    int =
+      sched[start >= sliceTime & end <= nextSlice,
+            list(e_uid)] ## interior
+    int[,c('left', 'right') := list(0, 1)]
+    ext =
+      sched[start <  sliceTime & end >  nextSlice,
+            list(e_uid, left=(sliceTime-start)/weight,
+                 right=(end-nextSlice)/weight)] ## exterior
     ## left overlap
-    left = sched[start <  sliceTime & end >   sliceTime & end <= nextSlice,
-      which=T]
+    left =
+      sched[start <  sliceTime & end >   sliceTime & end <= nextSlice,
+            list(e_uid, left=(sliceTime-start)/weight)]
+    left[, right := 1]
     ## right overlap
-    right = sched[start >= sliceTime & start < nextSlice & end >  nextSlice,
-      which=T]
-
-    result = list(int=int, ext=ext, left=left, right=right)
+    right =
+      sched[start >= sliceTime & start < nextSlice & end >  nextSlice,
+            list(e_uid, right=(nextSlice-start)/weight)]
+    right[, left := 0]
+    setcolorder(right, names(int))
     
-###!@todo define overlap fractions (depends on overlap type). For
-###!dependent timeslices, we don't care about the right side, just the
-###!left side. We only get to decide configurations for tasks that
-###!start in the current timeslice (interior and right types); other
-###!tasks retain their previous configurations.
-    result
+    result = rbind(int, ext, left, right)
+
+###!we need to modify all edges according to the fraction in the
+###!timeslice, not just the scheduled edges. So, find out which edges
+###!are in the timeslice, then determine their splits. Possible splits
+###!depend on the type of overlap.
+
+    return(edges[result][,c('weight', 'left', 'right') :=
+                         list((right-left)*weight, NULL, NULL)])
   }
-  
-  result = lapply(sliceTimes, f)
+
+  result = nnapply(sliceTimes, f)
   result
 }
 
