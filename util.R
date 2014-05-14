@@ -123,6 +123,8 @@ slackEdges = function(edges, critPath){
   nonCritEdges = edges[!J(critPath)]
   critEdges = edges[J(critPath)]
 
+  ## for LP purposes, 0 is equivalent to NA for power. Weight must be
+  ## treated differently.
   f = function(row){
     slack = data.table::copy(row)
     row[, c('dest', 'd_uid') := list(-e_uid, NA)]

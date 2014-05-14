@@ -202,10 +202,6 @@ reduceConfs = function(x){
   }
   setkey(x$schedule, start, weight)
   x$schedule$e_uid = 1:nrow(x$schedule)
-  confName = gsub('[/.]', '_', x$key)
-  write.table(x$schedule[,list(e_uid)][order(e_uid)],
-              file=paste(confName,'task_IDs.csv',sep='.'),
-              row.names=F, quote=F, sep=',')
 
   ## edges in topological order
   ##x$schedule[J(x$vertices)]
@@ -215,31 +211,28 @@ reduceConfs = function(x){
   ## store e_uid for edges on the longest path
   x$longestPath = longest.path(x$schedule[J(x$vertices)], x$vertices, g)
   rm(g)
-
-  ## Insert slack edges. These edges will have power, but not minimum
-  ## time. To insert the new edges, we need new vertices and new edge
-  ## uids. We use the negative of the original edge uid for each.
-  
-  
-  ##!@todo move schedule write here
   
   setkey(x$schedule, s_uid, d_uid)
   setkey(x$edges, s_uid, d_uid)
   x$edges[x$schedule, e_uid:=e_uid]
 
-###!@todo insert slack edges and new vertices. These edges should go
-###!in a separate table, as they are not affected by configuration
-###!changes.
+  ## Insert slack edges. These edges will have power, but not minimum
+  ## time. To insert the new edges, we need new vertices and new edge
+  ## uids. We use the negative of the original edge uid for each.
+  x$edges = slackEdges(x$edges, x$longestPath)
+  x$edges[is.na(weight), weight:=0]
 
+  confName = gsub('[/.]', '_', x$key)
+  ## write edge uids
+  write.table(unique(x$edges[,list(e_uid)])[order(e_uid)],
+              file=paste(confName,'task_IDs.csv',sep='.'),
+              row.names=F, quote=F, sep=',')
+  
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   
-###!@todo is it possible to get this into pyomo as a single table?
+###! is it possible to get this into pyomo as a single table?
 ###! Yes.  See PO from table.py tutorial
-  ## lapply(c('weight','power','src','dest'), function(name)
-  ##        write.table(x$edges[, c(firstCols, name), with=F],
-  ##                    file=paste(confName,'.task_',name,'.csv',sep=''),
-  ##                    row.names=F, quote=F, sep=','))
   write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
               file=paste(confName, '.edges.csv', sep=''),
               row.names=F, quote=F, sep=',')
