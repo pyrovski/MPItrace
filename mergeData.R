@@ -225,11 +225,16 @@ reduceConfs = function(x){
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   
-###! is it possible to get this into pyomo as a single table?
-###! Yes.  See PO from table.py tutorial
   write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
               file=paste(confName, '.edges.csv', sep=''),
               row.names=F, quote=F, sep=',')
+
+  ##!@todo I would like to keep all the edges in one table for the LP,
+  ##!but this may be impossible.
+  
+  ## write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
+  ##             file=paste(confName, '.slack_edges.csv', sep=''),
+  ##             row.names=F, quote=F, sep=',')
   return(x)
 }
 
