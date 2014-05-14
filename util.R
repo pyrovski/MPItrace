@@ -30,7 +30,7 @@ rlePower = function(powers){
 
 ## return sets of indices for each timeslice and how much of each task
 ## is in each timeslice
-timeslice = function(sched, start=0, length=.01, n=1){
+timeslice = function(sched, criticalPath, start=0, length=.01, n=1){
   if(n != 1)
     stop("Not implemented yet")
 
@@ -75,6 +75,8 @@ longest.path = function(edges, vertices, graph){
     stop('expected igraph')
 
   vertices$longest = -Inf
+
+  ## via: edge uid
   vertices$via = as.numeric(NA)
   setkey(vertices, vertex)
   vertices[J(1), longest:=0] ## Init
@@ -98,4 +100,39 @@ longest.path = function(edges, vertices, graph){
   
   setkey(edges, e_uid)
   f(vertices[name == 'MPI_Finalize', via])
+}
+
+minConf = function(confs){
+  ## if we can't simultaneously minimize all knobs, choose the config
+  ## with the lowest power. This may be arbitrary for modeled power.
+  confs[power > 0][which.min(power)]
+}
+
+slackEdges = function(edges, critPath){
+  ##!@todo record active wait power in shim library, export to
+  ##!glog.dat, and use for slack edges
+
+  ## for now, we use the minimum power recorded in any run as active
+  ## wait power
+  slackConfig = minConf(edges[,c(confCols,'power'), with=F])
+  slackPower = slackConfig[,power]
+  slackConfig = slackConfig[,confCols, with=F]
+
+  setkey(edges, e_uid)
+  ##  cols = setdiff(names(edges), confCols)
+  nonCritEdges = edges[!J(critPath)]
+  critEdges = edges[J(critPath)]
+
+  f = function(row){
+    slack = data.table::copy(row)
+    row[, c('dest', 'd_uid') := list(-e_uid, NA)]
+    if(identical(row[,confCols,with=F], slackConfig)){
+      slack[, c('e_uid', 'src', 's_uid', 'weight', 'power') :=
+            list(-e_uid, -e_uid, NA, NA, slackPower)]
+      rbind(row, slack)
+    } else
+       row
+  }
+  nonCritEdges = rbindlist(rowApply(nonCritEdges, f))
+  rbind(critEdges, nonCritEdges)
 }
