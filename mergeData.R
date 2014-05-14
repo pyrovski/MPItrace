@@ -211,9 +211,18 @@ reduceConfs = function(x){
   ##x$schedule[J(x$vertices)]
   ## critical path
   setkey(x$schedule, src)
+
+  ## store e_uid for edges on the longest path
   x$longestPath = longest.path(x$schedule[J(x$vertices)], x$vertices, g)
   rm(g)
 
+  ## Insert slack edges. These edges will have power, but not minimum
+  ## time. To insert the new edges, we need new vertices and new edge
+  ## uids. We use the negative of the original edge uid for each.
+  
+  
+  ##!@todo move schedule write here
+  
   setkey(x$schedule, s_uid, d_uid)
   setkey(x$edges, s_uid, d_uid)
   x$edges[x$schedule, e_uid:=e_uid]
