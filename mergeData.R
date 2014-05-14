@@ -222,6 +222,10 @@ reduceConfs = function(x){
               file=paste(confName,'task_IDs.csv',sep='.'),
               row.names=F, quote=F, sep=',')
   
+  write.table(x$vertices,
+              file=paste(confName, '.vertices.csv', sep=''),
+              row.names=F, quote=F, sep=',')
+
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   
