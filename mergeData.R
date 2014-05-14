@@ -214,20 +214,25 @@ reduceConfs = function(x){
   ## setkey(x$reduced, uid)
   ## x$schedule$s_rank = x$reduced[J(x$schedule[, s_uid]), rank, mult='first']
   ## x$schedule$d_rank = x$reduced[J(x$schedule[, d_uid]), rank, mult='first']
-
+  return(x)
+}
+writeSlice = function(x){
+  x$edges = timeslice(x$schedule, x$edges)[[1]]
   
+  firstCols = c('e_uid', confCols)
+  setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   confName = gsub('[/.]', '_', x$key)
   ## write edge uids
   write.table(unique(x$edges[,list(e_uid)])[order(e_uid)],
               file=paste(confName,'task_IDs.csv',sep='.'),
               row.names=F, quote=F, sep=',')
+
+  x$vertices = x$edges[,list(vertex=union(src,dest))]
   
   write.table(x$vertices,
               file=paste(confName, '.vertices.csv', sep=''),
               row.names=F, quote=F, sep=',')
 
-  firstCols = c('e_uid', confCols)
-  setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   
   write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
               file=paste(confName, '.edges.csv', sep=''),
@@ -239,7 +244,6 @@ reduceConfs = function(x){
   ## write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
   ##             file=paste(confName, '.slack_edges.csv', sep=''),
   ##             row.names=F, quote=F, sep=',')
-  return(x)
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
@@ -279,6 +283,9 @@ go = function(){
   cat('Reducing configurations\n')
   reduced <<- mclapply(merged, reduceConfs)
   cat('Done reducing configurations\n')
+  cat('Writing timeslices\n')
+  lapply(reduced, writeSlice)
+  cat('Done writing timeslices\n')
   save(measurementCols, reduced, merged, entrySpace, countedEntryspace,
        entryCols, entries, confSpace, confCols,
        file='mergedData.Rsave')
