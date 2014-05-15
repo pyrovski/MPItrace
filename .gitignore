@@ -41,3 +41,4 @@ localConfig
 *.pyc
 *.pdf
 \#*
+*.gch
