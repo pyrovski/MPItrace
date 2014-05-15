@@ -112,9 +112,10 @@ mergeConfs = function(conf){
   write.table(unique(runtimes[,confCols,with=F]),
               file=paste(confName,'confSpace.csv',sep='.'), quote=F,
               sep=',', row.names=F)
-  write.table(runtimes[,list(rank=sort(unique(rank)))],
-              file=paste(confName,'ranks.csv',sep='.'), quote=F,
-              sep=',', row.names=F)
+  ## get rank list from last_edges
+  ## write.table(runtimes[,list(rank=sort(unique(rank)))],
+  ##             file=paste(confName,'ranks.csv',sep='.'), quote=F,
+  ##             sep=',', row.names=F)
 
   list(runtimes=runtimes, assignments=assignments,
        messageEdges=messageEdges, compEdges=compEdges)
@@ -152,10 +153,16 @@ reduceConfs = function(x){
   x$messageEdges = rbindlist(x$messageEdges)
   by = c('s_uid','d_uid',confCols)
   x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
+  x$messageEdges[, type:='message']
+  setkey(x$reduced, uid)
+  ## message edges can convert to slack edges, so we need the destination rank
+  x$messageEdges[, rank:=x$reduced[J(x$messageEdges[,d_uid,by=d_uid]), rank]]
 
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
+  x$compEdges[, type:='comp']
+  x$compEdges[, rank:=x$reduced[J(x$compEdges[,d_uid,by=d_uid]), rank]]
   setkey(x$messageEdges)
   x$edges = merge(x$messageEdges, x$compEdges, all=T)
 
@@ -201,13 +208,6 @@ reduceConfs = function(x){
   x$schedule = schedule$edges
   x$vertices = schedule$vertices
   rm(schedule)
-
-  ##!@todo get a src and dest rank for each edge to facilitate slack
-  ##!attribution. This should happen in edges, not schedule.
-  
-  ## setkey(x$reduced, uid)
-  ## x$schedule$s_rank = x$reduced[J(x$schedule[, s_uid]), rank, mult='first']
-  ## x$schedule$d_rank = x$reduced[J(x$schedule[, d_uid]), rank, mult='first']
   return(x)
 }
 
@@ -236,12 +236,19 @@ writeSlice = function(x){
               file=paste(confName, '.edge_weights.csv', sep=''),
               row.names=F, quote=F, sep=',')
 
-  ##!@todo I would like to keep all the edges in one table for the LP,
-  ##!but this may be impossible.
-  
-  ## write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
-  ##             file=paste(confName, '.slack_edges.csv', sep=''),
-  ##             row.names=F, quote=F, sep=',')
+  ## ##!I only need a single rank column. Slack edges always go on the
+  ## ##!destination rank, and we don't care about messages. Only the
+  ## ##!computation and slack edges should have rank information.
+
+  ##!@todo this might choose the wrong edge for a rank if multiple
+  ##!edges start at the same time? I guess we should break ties by
+  ##!choosing computation or slack edges, but not message edges.
+  write.table(
+    x$schedule[e_uid %in% x$edges[,e_uid]][type %in% c('comp', 'slack'),
+                                           .SD[which.max(start)],
+                                           by=rank][,list(rank, last_edge=e_uid)],
+    file=paste(confName, '.last_edges.csv', sep=''),
+    row.names=F, quote=F, sep=',')
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
