@@ -84,15 +84,6 @@ mergeConfs = function(conf){
     stop(errMsg)
   }
     
-### Construct hash maps; one table per rank with one column per run
-  ## setkey(runtimes, date, rank, uid)
-  ## ranks = (1:conf$ranks)-1
-  ## hashMaps = nnapply(ranks, function(r){
-  ##   result = as.data.table(nnapply(dates, function(d){
-  ##     unique(runtimes[J(d, r)]$hash)
-  ##   }))
-  ## })
-
   fixDates = tail(dates, -1)
   masterDate = head(dates, 1)
   cat('Matching hashes between', length(dates), 'runs\n')
@@ -120,6 +111,9 @@ mergeConfs = function(conf){
   confName = gsub('[/.]', '_', conf$key)
   write.table(unique(runtimes[,confCols,with=F]),
               file=paste(confName,'confSpace.csv',sep='.'), quote=F,
+              sep=',', row.names=F)
+  write.table(runtimes[,list(rank=sort(unique(rank)))],
+              file=paste(confName,'ranks.csv',sep='.'), quote=F,
               sep=',', row.names=F)
 
   list(runtimes=runtimes, assignments=assignments,
@@ -216,6 +210,7 @@ reduceConfs = function(x){
   ## x$schedule$d_rank = x$reduced[J(x$schedule[, d_uid]), rank, mult='first']
   return(x)
 }
+
 writeSlice = function(x){
   x$edges = timeslice(x$schedule, x$edges)[[1]]
   
@@ -234,8 +229,11 @@ writeSlice = function(x){
               row.names=F, quote=F, sep=',')
 
   
-  write.table(x$edges[,c(firstCols, 'src', 'dest', 'weight', 'power'),with=F],
+  write.table(x$edges[,list(src=head(src, 1), dest=head(dest, 1)), by=e_uid],
               file=paste(confName, '.edges.csv', sep=''),
+              row.names=F, quote=F, sep=',')
+  write.table(x$edges[,c(firstCols, 'weight', 'power'),with=F],
+              file=paste(confName, '.edge_weights.csv', sep=''),
               row.names=F, quote=F, sep=',')
 
   ##!@todo I would like to keep all the edges in one table for the LP,
