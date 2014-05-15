@@ -229,7 +229,9 @@ writeSlice = function(x){
               row.names=F, quote=F, sep=',')
 
   
-  write.table(x$edges[,list(src=head(src, 1), dest=head(dest, 1)), by=e_uid],
+  write.table(x$edges[,list(src=head(src, 1), dest=head(dest, 1),
+                            edge_rank=head(rank,1)),
+                      by=e_uid],
               file=paste(confName, '.edges.csv', sep=''),
               row.names=F, quote=F, sep=',')
   write.table(x$edges[,c(firstCols, 'weight', 'power'),with=F],
