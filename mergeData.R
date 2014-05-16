@@ -126,6 +126,8 @@ reduceConfs = function(x){
     setkeyv(x$reduced, by)
     setkeyv(x$runtimes, by)
     x$reduced = x$runtimes[x$reduced,,mult='first']
+    x$reduced =
+      reduceNoEffect(x$reduced, measurementCols, nonMeasurementCols, by)
   } else {
     ## this is slower by 3x.
     nonMeasurementCols = setdiff(names(x$runtimes), c(by, measurementCols))
@@ -137,6 +139,7 @@ reduceConfs = function(x){
                  by=by]
   }
   x$runtimes = NULL
+ 
   ## all message edges should be identical between runs
   ##x$messageEdges = x$messageEdges[[1]]
   x$messageEdges = rbindlist(x$messageEdges)
@@ -146,13 +149,23 @@ reduceConfs = function(x){
   setkey(x$reduced, uid)
   ## message edges can convert to slack edges, so we need the destination rank
   x$messageEdges[, rank:=x$reduced[J(x$messageEdges[,d_uid,by=d_uid]), rank]]
-
+  x$messageEdges =
+    reduceNoEffect(x$messageEdges, c('weight'),
+                   setdiff(names(x$messageEdges),
+                           c('weight')), c('s_uid','d_uid',confCols))
+  
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   x$compEdges[, type:='comp']
   x$compEdges[, rank:=x$reduced[J(x$compEdges[,d_uid,by=d_uid]), rank]]
+  x$compEdges =
+    reduceNoEffect(x$compEdges, c('weight','power'),
+                   setdiff(names(x$compEdges),
+                           c('weight','power')), c('s_uid','d_uid',confCols))
+
   setkey(x$messageEdges)
+  setkey(x$compEdges, NULL)
   x$edges = merge(x$messageEdges, x$compEdges, all=T)
 
   ## set power to zero for message edges
@@ -210,8 +223,8 @@ writeSlice = function(x){
 ###!@todo for now, only output one or two configs per edge. This
 ###!allows a convex representation of the time-power relationship over
 ###!the configuration space. In the future, output only the configs on
-###!the pareto frontier, or all configs, and let the optimizer handle
-###!a non-convex piecewise-linear time-power function.
+###!the pareto frontier and let the optimizer handle a
+###!piecewise-linear time-power function.
   
   ## write confSpace
   write.table(unique(x$edges[,confCols,with=F], by=confCols),

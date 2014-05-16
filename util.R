@@ -155,10 +155,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))]){
 
 slackEdges = function(edges, critPath){
   ##!@todo record active wait power in shim library, export to
-  ##!glog.dat, and use for slack edges
-
-  ## for now, we use the minimum power recorded in any run as active
-  ## wait power
+  ##!glog.dat, and use for slack edges. For now, we use the minimum
+  ##!power recorded in any run as active wait power
   slackConfig = minConf(edges[,c(confCols,'power'), with=F])
   slackPower = slackConfig[,power]
   slackConfig = slackConfig[,confCols, with=F]
@@ -182,4 +180,23 @@ slackEdges = function(edges, critPath){
   }
   nonCritEdges = rbindlist(rowApply(nonCritEdges, f))
   rbind(critEdges, nonCritEdges)
+}
+
+##!@todo there has to be a better way to do this
+reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
+  if('flags' %in% names(x)){
+    xOMP = x[flags & flagBits$omp]
+    xNoOMP = x[!flags & flagBits$omp]
+  } else if('type' %in% names(x)){
+    xNoOMP = x[type == 'message']
+    xOMP = x[type != 'message']
+  }
+  xNoOMP[, OMP_NUM_THREADS:=1]
+  xNoOMP_unreduced = xNoOMP[, nonMeasurementCols, with=F]
+  xNoOMP_reduced =
+    xNoOMP[,lapply(.SD[, measurementCols, with=F], mean), by=by]
+  setkeyv(xNoOMP_unreduced, by)
+  setkeyv(xNoOMP_reduced, by)
+  xNoOMP = xNoOMP_unreduced[xNoOMP_reduced,, mult='first']
+  rbind(xNoOMP, xOMP, use.names=T)
 }
