@@ -14,7 +14,7 @@ g = function(entry){
   ## Does merged data exist?  If not, merge it.
   if(-1 == file.access(filename)){
     print(filename)
-    ##!@todo if on lc system, launch moab jobs for this
+    ##! if on lc system, categorize.sh can launch moab jobs for this
     run(path=entry$path, saveResult=T)
   } ##else cat('Merged data for', entry$date, 'already exists\n')
   
@@ -67,8 +67,6 @@ mergeConfs = function(conf){
   compEdges = lapply(result, '[[', 'compEdges')
   names(compEdges) = lapply(result, '[[', 'date')
 
-  ##!@todo merge runtimes by config, then recreate graphs from merged runtimes
-  
   rm(result)
  
 ### Comms should already be unified; I mapped MPI_COMM_WORLD and
@@ -107,15 +105,6 @@ mergeConfs = function(conf){
   ## if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
   ##   stop(conf$key, ' failed UID check')
   ## }
-
-  confName = gsub('[/.]', '_', conf$key)
-  write.table(unique(runtimes[,confCols,with=F]),
-              file=paste(confName,'confSpace.csv',sep='.'), quote=F,
-              sep=',', row.names=F)
-  ## get rank list from last_edges
-  ## write.table(runtimes[,list(rank=sort(unique(rank)))],
-  ##             file=paste(confName,'ranks.csv',sep='.'), quote=F,
-  ##             sep=',', row.names=F)
 
   list(runtimes=runtimes, assignments=assignments,
        messageEdges=messageEdges, compEdges=compEdges)
@@ -217,6 +206,18 @@ writeSlice = function(x){
   firstCols = c('e_uid', confCols)
   setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   confName = gsub('[/.]', '_', x$key)
+
+###!@todo for now, only output one or two configs per edge. This
+###!allows a convex representation of the time-power relationship over
+###!the configuration space. In the future, output only the configs on
+###!the pareto frontier, or all configs, and let the optimizer handle
+###!a non-convex piecewise-linear time-power function.
+  
+  ## write confSpace
+  write.table(unique(x$edges[,confCols,with=F], by=confCols),
+              file=paste(confName,'confSpace.csv',sep='.'), quote=F,
+              sep=',', row.names=F)
+
   ## write edge uids
   write.table(unique(x$edges[,list(e_uid)])[order(e_uid)],
               file=paste(confName,'task_IDs.csv',sep='.'),
@@ -247,7 +248,9 @@ writeSlice = function(x){
 
   ##!@todo this might choose the wrong edge for a rank if multiple
   ##!edges start at the same time? I guess we should break ties by
-  ##!choosing computation or slack edges, but not message edges.
+  ##!choosing computation or slack edges, but not message
+  ##!edges. Alternatively, the timeslice time can just depend on all
+  ##!tasks.
   write.table(
     x$schedule[e_uid %in% x$edges[,e_uid]][type %in% c('comp', 'slack'),
                                            .SD[which.max(start)],
