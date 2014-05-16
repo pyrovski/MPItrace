@@ -222,8 +222,8 @@ writeSlice = function(x){
 
 ###!@todo for now, only output one or two configs per edge. This
 ###!allows a convex representation of the time-power relationship over
-###!the configuration space. In the future, output only the configs on
-###!the pareto frontier and let the optimizer handle a
+###!the configuration space. We already output only the configs on the
+###!pareto frontier; in the future, let the optimizer handle a
 ###!piecewise-linear time-power function.
   
   ## write confSpace
