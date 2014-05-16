@@ -170,7 +170,7 @@ reduceConfs = function(x){
 
   ## set power to zero for message edges
   x$edges[is.na(power), power:=0]
-  
+
   x$vertices = x$reduced[!is.na(name),list(name=head(name,1)),by=vertex]
   
   ## Get an initial schedule, starting with minimum time per task.
@@ -196,6 +196,9 @@ reduceConfs = function(x){
   setkey(x$schedule, s_uid, d_uid)
   setkey(x$edges, s_uid, d_uid)
   x$edges[x$schedule, e_uid:=e_uid]
+
+  ## get pareto frontiers
+  x$edges = pareto(x$edges)
 
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge

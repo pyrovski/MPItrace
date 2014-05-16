@@ -203,8 +203,6 @@ reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
 
 pareto = function(edges){
   ##!return the rows with configurations on the pareto frontier for each edge uid
-  confs = unique(edges[,confCols, with=F], by=confCols)
-  setkey(edges, e_uid)
   f = function(uid_edges){
     uid_edges = uid_edges[order(weight, power)]
     count = 1
