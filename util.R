@@ -200,3 +200,20 @@ reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
   xNoOMP = xNoOMP_unreduced[xNoOMP_reduced,, mult='first']
   rbind(xNoOMP, xOMP, use.names=T)
 }
+
+pareto = function(edges){
+  ##!@todo return the rows with configurations on the pareto frontier for each edge uid
+  confs = unique(edges[,confCols, with=F], by=confCols)
+  setkey(edges, e_uid)
+  f = function(uid_edges){
+    uid_edges = uid_edges[order(weight, power)]
+    count = 1
+    frontier = c(1)
+    if(nrow(uid_edges) > 1)
+      for(row in 2:nrow(uid_edges))
+        if(uid_edges[row, power] < uid_edges[frontier[count], power])
+          frontier[count <- count + 1] = row
+    uid_edges[frontier]
+  }
+  edges[, f(.SD), by=e_uid]
+}
