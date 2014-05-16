@@ -681,7 +681,8 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
                    weight=s$duration,
                    power=s$pkg_w+s$pp0_w+s$dram_w,
                    s_uid=s$uid,
-                   d_uid=d$uid)
+                   d_uid=d$uid,
+                   flags=s$flags)
       if(any(is.na(y[J(result$src)]$name))){
         cat('comp->comp!\n')
         print(e)
