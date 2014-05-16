@@ -228,6 +228,9 @@ writeSlice = function(x){
               file=paste(confName, '.vertices.csv', sep=''),
               row.names=F, quote=F, sep=',')
 
+###!@todo for dependent timeslices, only output one configuration for
+###!the first computation edge on each rank. This configuration should
+###!come from the previous timeslice solution.
   
   write.table(x$edges[,list(src=head(src, 1), dest=head(dest, 1),
                             edge_rank=head(rank,1)),
