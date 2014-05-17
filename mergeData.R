@@ -234,11 +234,6 @@ writeSlice = function(x){
               file=paste(confName,'confSpace.csv',sep='.'), quote=F,
               sep=',', row.names=F)
 
-  ## write edge uids
-  write.table(unique(x$edges[,list(e_uid)])[order(e_uid)],
-              file=paste(confName,'task_IDs.csv',sep='.'),
-              row.names=F, quote=F, sep=',')
-
   x$vertices = x$edges[,list(vertex=union(src,dest))]
   
   write.table(x$vertices,
