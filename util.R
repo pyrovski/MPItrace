@@ -82,57 +82,27 @@ timeslice = function(sched, edges, criticalPath, start=0, length=.01, n=1){
   result
 }
 
-## edges should be in topological order
-longest.path = function(edges, vertices, graph){
-  if(!inherits(edges, 'data.table'))
-    stop('expected data.table')
-  if(!inherits(graph, 'igraph'))
-    stop('expected igraph')
-
-  vertices$longest = -Inf
-
-  ## via: edge uid
-  vertices$via = as.numeric(NA)
-  setkey(vertices, vertex)
-  vertices[J(1), longest:=0] ## Init
-  for(row in 1:nrow(edges)){
-    r = edges[row]
-##    l = vertices[J(row$dest), longest]
-    srcLongest = vertices[J(r$src), longest] + r$weight
-    curLongest = vertices[J(r$dest), longest]
-    if(srcLongest > curLongest)
-      vertices[J(r$dest), via:=r$e_uid]
-    vertices[J(r$dest), longest:=max(srcLongest,curLongest)]
-  }
-
-  f = function(e){
-    via = vertices[J(edges[J(e),src]), via]
-    if(!is.na(via))
-      return(c(f(via), e))
-    else
-      e
-  }
-  
-  setkey(edges, e_uid)
-  f(vertices[name == 'MPI_Finalize', via])
-}
-
 minConf = function(confs){
   ## if we can't simultaneously minimize all knobs, choose the config
   ## with the lowest power. This may be arbitrary for modeled power.
   confs[power > 0][which.min(power)]
 }
 
-## orders vertices and edges in topological order and adds start time
-## to each edge.
+## orders vertices and edges in topological order, adds a start time
+## and e_uid to each edge, and returns the critical path.
 getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))]){
+  edges = data.table::copy(edges)
   setcolorder(edges,
               c('src','dest',setdiff(names(edges), c('src','dest'))))
+  if(any(edges[, weight] < 0)){
+    stop('Negative-weight edge(s)!')
+  }
   g = graph.data.frame(edges)
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   ts_order = topological.sort(g)
-
+  rm(g)
+  
   setkey(vertices)
   vertices = vertices[J(gd$vertices[ts_order])]
   rm(gd)
@@ -150,7 +120,20 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))]){
     }
   }
   edges = edges[J(vertices)]
-  return(list(edges=edges, vertices=vertices, graph=g))
+  setkey(edges, start, weight)
+  edges$e_uid = 1:nrow(edges)
+
+  ## critical path; rebuild graph with e_uid field
+  edges[, oldWeight := weight]
+  edges[, weight := max(weight) - weight]
+  critPath =
+    get.shortest.paths(graph.data.frame(edges), from='1', to='2',
+                       output='epath')$epath[[1]]
+  edges[, weight := oldWeight]
+  edges[, oldWeight := NULL]
+  critPath = edges[critPath, e_uid]
+
+  return(list(edges=edges, vertices=vertices, critPath=critPath))
 }
 
 slackEdges = function(edges, critPath){
