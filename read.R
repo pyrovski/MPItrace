@@ -108,7 +108,7 @@ selfLatency =
          if(size < 4000)
            1.414e-06
          else
-           -5.768e-05 + 1.722e-10 * size
+           5.768e-05 + 1.722e-10 * size
        })
 
 #e = new.env()
