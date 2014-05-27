@@ -67,7 +67,7 @@ MPI_collectives = c(
   'MPI_File_write_at_all',
   MPI_Comm_sources)
 
-MPI_req_sinks =
+MPI_Req_sinks =
   c('MPI_Wait', 'MPI_Waitall', 'MPI_Waitsome',
     'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
     'MPI_Request_free', 'MPI_Cancel')
@@ -81,9 +81,15 @@ MPI_Irecvs =
   c('MPI_Irecv')
 
 ##! update shim_pre_1 when changing req_sources
-MPI_req_sources =
+MPI_Req_sources =
   c(MPI_Isends, MPI_Irecvs, 'MPI_Bsend_init',
     'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init','MPI_Recv_init')
+
+## these calls don't generate or terminate the request(s), but
+## initiate the communication; they act as both sinks (from _init())
+## and sources
+MPI_Req_starts =
+  c('MPI_Start', 'MPI_Startall')
 
 MPI_Sends =
   c('MPI_Send', 'MPI_Bsend', 'MPI_Rsend',
@@ -232,9 +238,7 @@ readAll = function(path='.'){
   x$succ = as.numeric(NA)
   
   ## brefs: request sources
-  x$brefs = vector('list', nrow(x))
-
-  ## fref: request sink
+  ## fref: request sinks
   x$fref = as.numeric(NA)
 
   ## uid: unique identifier
@@ -256,7 +260,6 @@ readAll = function(path='.'){
     ## remove duplicate communicator creation rows, add to a separate table
 
     ## old comm, new comm, new size, new rank, uid of sink
-
     sel =
       x[name %in% MPI_Comm_sources & is.na(size) & comm != new_MPI_COMM_NULL,
         which=T]
@@ -310,8 +313,8 @@ readAll = function(path='.'){
   ## only entries with requests
   setkey(x, uid)
   reqUIDs = x[!is.na(reqs), uid]
-  sources = intersect(x[name %in% MPI_req_sources, uid], reqUIDs)
-  sinks = intersect(x[name %in% MPI_req_sinks, uid], reqUIDs)
+  sources = intersect(x[name %in% MPI_Req_sources, uid], reqUIDs)
+  sinks = intersect(x[name %in% MPI_Req_sinks, uid], reqUIDs)
   
   if(length(sinks)){
     brefs = vector('list', length=nrow(x))
@@ -322,7 +325,13 @@ readAll = function(path='.'){
     ##!lists after the fact, and set fref, tag, and src.
     
     ## for each request sink, find its source
+
     ## double-link sinks and sources for later matching of messages
+
+###!@todo a request can have multiple 'sinks' in its lifetime; waiting
+###!for finished requests is allowed, and persistent requests can be
+###!restarted.
+    reqStates = c('init', 'active', 'null', 'deinit')
     sinkCount = 1
     for(req in sinkReqs){
       if(debug && !(sinkCount %% 100))
@@ -336,7 +345,7 @@ readAll = function(path='.'){
         if(debug && !(reqCount %% 100))
           cat('Rank', rank, 'request instance', reqCount, 'of', length(reqFound), '\n')
         sinkIndex = x[J(i), which=T]
-        if(x[sinkIndex]$name %in% MPI_req_sources){
+        if(x[sinkIndex]$name %in% MPI_Req_sources){
           sourced = T
           last = i ## uid
         } else if(sourced){ ## sink
@@ -365,13 +374,13 @@ readAll = function(path='.'){
     x[,reqs:=NULL]
   ## remove src and tag from req sinks, convert back from list
   x$src = unlist(rowApply(x, function(row){
-    if(row$name %in% MPI_req_sinks)
+    if(row$name %in% MPI_Req_sinks)
       as.integer(NA)
     else
       row$src
   }))
   x$tag = unlist(rowApply(x, function(row){
-    if(row$name %in% MPI_req_sinks)
+    if(row$name %in% MPI_Req_sinks)
       as.integer(NA)
     else
       row$tag
@@ -563,7 +572,7 @@ messageDeps = function(x){
   }
 
   f_noSideEffects = function(s, r){
-    ## handle Isends and Irecvs by forwarding to corresponding MPI_Wait()s
+    ## handle Irecvs by forwarding to corresponding MPI_Wait()s
     if(!is.na(r$fref)){
       dest = r$fref
       o_dest = r$uid
@@ -589,7 +598,7 @@ messageDeps = function(x){
       x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
 ### ignore canceled requests and requests not waited for
     matching =
-      matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_req_sources]
+      matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_Req_sources]
     if(nrow(matching) < 1){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
