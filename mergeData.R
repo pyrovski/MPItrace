@@ -200,7 +200,7 @@ reduceConfs = function(x){
   ## critical path because no slack edges are on it.
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(e_uid)]
   ## get topological order again and add start times
-  schedule = getSchedule(x$schedule)
+  schedule = getSchedule(x$schedule, doCritPath=F)
   x$schedule = schedule$edges
   x$vertices = schedule$vertices
   rm(schedule)

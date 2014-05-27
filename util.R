@@ -90,7 +90,7 @@ minConf = function(confs){
 
 ## orders vertices and edges in topological order, adds a start time
 ## and e_uid to each edge, and returns the critical path.
-getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))]){
+getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doCritPath=T){
   edges = data.table::copy(edges)
   setcolorder(edges,
               c('src','dest',setdiff(names(edges), c('src','dest'))))
@@ -121,17 +121,21 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))]){
   }
   edges = edges[J(vertices)]
   setkey(edges, start, weight)
-  edges$e_uid = 1:nrow(edges)
+  if(!'e_uid' %in% names(edges))
+    edges$e_uid = 1:nrow(edges)
 
-  ## critical path; rebuild graph with e_uid field
-  edges[, oldWeight := weight]
-  edges[, weight := max(weight) - weight]
-  critPath =
-    get.shortest.paths(graph.data.frame(edges), from='1', to='2',
-                       output='epath')$epath[[1]]
-  edges[, weight := oldWeight]
-  edges[, oldWeight := NULL]
-  critPath = edges[critPath, e_uid]
+  if(doCritPath){
+    ## critical path; rebuild graph with e_uid field
+    edges[, oldWeight := weight]
+    edges[, weight := max(weight) - weight]
+    critPath =
+      get.shortest.paths(graph.data.frame(edges), from='1', to='2',
+                         output='epath')$epath[[1]]
+    edges[, weight := oldWeight]
+    edges[, oldWeight := NULL]
+    critPath = edges[critPath, e_uid]
+  } else
+    critPath=NULL
 
   return(list(edges=edges, vertices=vertices, critPath=critPath))
 }
