@@ -667,7 +667,7 @@ messageDeps = function(x){
     names(result) = c('o_src', 'src', 'o_dest', 'dest')
     return(result)
   }
-  debug(f)
+
   ## srDeps holds source and destination UIDs for matching messages
   srDeps = mclapply(1:nrow(mids), f)
   ## this is slower than rbindlist, but doesn't segfault
@@ -735,12 +735,12 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
                    s_uid=s$uid,
                    d_uid=d$uid,
                    flags=s$flags)
-      if(any(is.na(y[J(result$src)]$name))){
-        cat('comp->comp!\n')
-        print(e)
-        print(y[J(c(result$src, result$dest))])
-        print(result)
-      }
+      ## if(any(is.na(y[J(result$src)]$name))){
+      ##   cat('comp->comp!\n')
+      ##   print(e)
+      ##   print(y[J(c(result$src, result$dest))])
+      ##   print(result)
+      ## }
       return(result)
     }))
 
