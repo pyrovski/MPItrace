@@ -17,7 +17,7 @@ adjWidth()
 
 debug=T
 
-options(mc.cores=16)
+#options(mc.cores=16)
 options(datatable.nomatch=0)
 
 flagBits = list(omp=1)
@@ -67,11 +67,6 @@ MPI_collectives = c(
   'MPI_File_write_at_all',
   MPI_Comm_sources)
 
-MPI_Req_sinks =
-  c('MPI_Wait', 'MPI_Waitall', 'MPI_Waitsome',
-    'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
-    'MPI_Request_free', 'MPI_Cancel')
-
 ##!@todo handle MPI_Start, MPI_*_init
 MPI_Isends =
   c('MPI_Isend','MPI_Irsend',
@@ -82,7 +77,10 @@ MPI_Irecvs =
 
 ##! update shim_pre_1 when changing req_sources
 MPI_Req_sources =
-  c(MPI_Isends, MPI_Irecvs, 'MPI_Bsend_init',
+  c(MPI_Isends, MPI_Irecvs)
+
+MPI_Req_inits =
+  c('MPI_Bsend_init',
     'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init','MPI_Recv_init')
 
 ## these calls don't generate or terminate the request(s), but
@@ -90,6 +88,13 @@ MPI_Req_sources =
 ## and sources
 MPI_Req_starts =
   c('MPI_Start', 'MPI_Startall')
+
+MPI_Req_sinks =
+  c('MPI_Wait', 'MPI_Waitall', 'MPI_Waitsome',
+    'MPI_Test', 'MPI_Testall', 'MPI_Testsome',
+    'MPI_Cancel')
+
+MPI_Req_frees = 'MPI_Request_free'
 
 MPI_Sends =
   c('MPI_Send', 'MPI_Bsend', 'MPI_Rsend',
@@ -162,7 +167,7 @@ readGlobal = function(path = '.', filename = "glog.dat"){
   assign('globals', as.list(e), envir=.GlobalEnv)
 }
 
-readRuntime = function(filename, path='.'){
+readRuntime = function(filename, maxRank, path='.'){
   filename = file.path(path, filename)
   firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
   a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
@@ -176,9 +181,19 @@ readRuntime = function(filename, path='.'){
   a$tag = lapply(strsplit(a$tag, ','), as.integer)
   a$tag = lapply(a$tag, f)
 
-  a$reqs = strsplit(a$reqs,',')
+  rank = as.integer(rev(strsplit(filename, '[.]')[[1]])[2])
+  a$uid = (1:nrow(a))+(rank)/(maxRank+1)
+  
+  splitReqs = strsplit(a$reqs,',')
+  uniqueReqs = Filter(Negate(is.na), unique(unlist(splitReqs)))
+  uidsByReq =
+    nnapply(uniqueReqs, function(req){
+      sel = grep(paste(req, '(,|$)', sep=''), a$reqs)
+      a[sel, uid]
+    })
+  a$reqs = splitReqs
   ##a[comm == '(nil)',comm:='']
-  return(a)
+  return(list(runtime=a, uidsByReq=uidsByReq))
 }
 
 readAll = function(path='.'){
@@ -188,8 +203,10 @@ readAll = function(path='.'){
   ## runtime
   files = sort(list.files(path,'runtime.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
-  runtimes = lapply(files, readRuntime, path=path)
+  runtimes = lapply(files, readRuntime, maxRank=max(ranks), path=path)
   names(runtimes) = ranks
+  uidsByReq = lapply(runtimes, '[[', 'uidsByReq')
+  runtimes = lapply(runtimes, '[[', 'runtime')
   runtimes =
     napply(runtimes, function(x, name){x$rank = as.numeric(name);x})
 
@@ -200,18 +217,17 @@ readAll = function(path='.'){
     rbindlist(lapply(files, function(file)
                      read.table(file.path(path, file), h=T,
                                 stringsAsFactors=F)))
-  return(list(runtimes=runtimes, assignments=assignments)) }
+  return(list(runtimes=runtimes, assignments=assignments, uidsByReq=uidsByReq)) }
 
 ## single rank only!
 
 ## Writing replays is important because the resulting traces will have
 ## resolved MPI_ANY_TAG and MPI_ANY_SOURCE.
-.deps = function(x, maxRank, writeReplay=T, path='.'){
+.deps = function(x, rank, uidsByReq, writeReplay=T, path='.'){
   ranks = unique(x$rank)
   if(length(ranks) > 1)
-    stop('Too many ranks in deps()!')
+    stop('Too many ranks in .deps()!')
 
-  rank = ranks
   rm(ranks)
 
   ##! process ANY_SOURCE and ANY_TAG entries
@@ -236,13 +252,6 @@ readAll = function(path='.'){
 
   ## succ: successors (only maintained per rank)
   x$succ = as.numeric(NA)
-  
-  ## brefs: request sources
-  ## fref: request sinks
-  x$fref = as.numeric(NA)
-
-  ## uid: unique identifier
-  x$uid = (1:nrow(x))+(rank)/(maxRank+1)
   
   x[duration == 0, duration := minDuration]
   
@@ -313,78 +322,111 @@ readAll = function(path='.'){
   ## only entries with requests
   setkey(x, uid)
   reqUIDs = x[!is.na(reqs), uid]
-  sources = intersect(x[name %in% MPI_Req_sources, uid], reqUIDs)
-  sinks = intersect(x[name %in% MPI_Req_sinks, uid], reqUIDs)
+  requests = names(uidsByReq)
   
-  if(length(sinks)){
+  if(length(requests)){
+    ## brefs: request sources
+    ## fref: request sinks
     brefs = vector('list', length=nrow(x))
-    sinkReqs = unique(unlist(x[J(sinks)]$reqs))
+    frefs = vector('list', length=nrow(x))
 
-    ##!@todo speed this up. I need to find source->sink pairs
-    ##!quickly. We could use mclapply here if we merged the brefs
-    ##!lists after the fact, and set fref, tag, and src.
-    
     ## for each request sink, find its source
 
     ## double-link sinks and sources for later matching of messages
 
-###!@todo a request can have multiple 'sinks' in its lifetime; waiting
-###!for finished requests is allowed, and persistent requests can be
+###!a request can have multiple 'sinks' in its lifetime; waiting for
+###!finished requests is allowed, and persistent requests can be
 ###!restarted.
-    reqStates = c('init', 'active', 'null', 'deinit')
-    sinkCount = 1
-    for(req in sinkReqs){
-      if(debug && !(sinkCount %% 100))
-        cat('Rank', rank, 'sink request', sinkCount, 'of', length(sinkReqs), '\n')
-      ## uids
-      reqFound =
-        reqUIDs[sapply(x[J(reqUIDs)]$reqs, function(x) req %in% x)]
+    reqStates = c('inactive', 'init', 'active', 'null')
+
+    reqTotals = sapply(uidsByReq, length)
+    reqCount = sum(reqTotals)
+    reqCumsum = cumsum(reqTotals)
+    reqCumsum = reqCumsum - reqCumsum[1]
+    reqProgress = function(req, offset) (unname(reqCumsum[req]) + offset)/reqCount
+###!@todo this could be parallelized if the brefs and frefs lists were
+###!merged afterward
+    offset = 1
+    cat('Tracking request states:\n')
+    for(req in requests){
+      progress = reqProgress(req, offset) * 100
+      progress = sprintf('\r%03.1f%%', progress)
+      cat(progress)
       sourced = F
-      reqCount = 1
-      for(i in reqFound){
-        if(debug && !(reqCount %% 100))
-          cat('Rank', rank, 'request instance', reqCount, 'of', length(reqFound), '\n')
-        sinkIndex = x[J(i), which=T]
-        if(x[sinkIndex]$name %in% MPI_Req_sources){
-          sourced = T
-          last = i ## uid
-        } else if(sourced){ ## sink
-          sourceIndex = x[J(last), which=T]
-          brefs[[sinkIndex]] = as.list(union(unlist(brefs[[sinkIndex]]), last))
-          x[sourceIndex, fref := i]
-          if(x[sourceIndex]$tag == MPI_ANY_TAG ||
-             x[sourceIndex]$src == MPI_ANY_SOURCE){
-            matchIndex = which(x[sinkIndex]$reqs == req)
-            resolvedTag = x[sinkIndex]$tag[matchIndex]
-            resolvedSrc = x[sinkIndex]$src[matchIndex]
-            x[sourceIndex, tag:=resolvedTag]
-            x[sourceIndex, src:=resolvedSrc]
-            cat('resolved tag and source for req', req, '\n')
+      lastSource = NA ## index, not uid
+      lastInit = NA ## index, not uid
+      reqState = factor('inactive', levels=reqStates)
+      for(reqUID in uidsByReq[[req]]){
+        reqIndex = x[J(reqUID), which=T]
+        if(reqState == 'inactive'){
+          if(x[reqIndex, name] %in% MPI_Req_inits){
+            lastInit = reqIndex
+            reqState = factor('init', levels=reqStates)
+          } else if(x[reqIndex, name] %in% MPI_Req_sources){
+            lastSource = reqIndex
+            reqState = factor('active', levels=reqStates)
+          } else {
+            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            break
           }
-          sourced = F
+        } else if(reqState == 'init'){
+          if(x[reqIndex, name] %in% MPI_Req_starts){
+            lastSource = reqIndex
+            reqState = factor('active', levels=reqStates)
+            ##! MPI_Startall has multiple reqs
+            brefs[[reqIndex]] = union(brefs[[reqIndex]], lastInit)
+            frefs[[lastInit]] = union(frefs[[lastInit]], reqIndex)
+          } else if(x[reqIndex, name] %in% MPI_Req_frees){
+            reqState = factor('inactive')
+          } else {
+            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            break
+          }
+        } else if(reqState == 'active'){
+          if(x[reqIndex, name] %in% MPI_Req_sinks){
+### tests are conditional sinks; unsuccessful tests don't record request IDs
+            ## wait or successful test
+            reqState = factor('null', levels=reqStates)
+            brefs[[reqIndex]] = union(brefs[[reqIndex]], lastSource)
+            frefs[[lastSource]] = union(frefs[[lastSource]], reqIndex)
+          } else if(x[reqIndex, name] %in% MPI_Req_frees){
+            reqState = factor('inactive', levels=reqStates)
+          } else {
+            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            break
+          }
+        } else if(reqState == 'null'){
+          if(x[reqIndex, name] %in% c(MPI_Req_sources, MPI_Req_starts)){
+            lastSource = reqIndex
+            reqState = factor('active', levels=reqStates)
+          } else if(x[reqIndex, name] %in% MPI_Req_frees){
+            reqState = factor('inactive')
+          } else if(x[reqIndex, name] %in% MPI_Req_inits){
+            lastInit = reqIndex
+            reqState = factor('init')
+          } else {
+            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            break
+          }
         }
-        reqCount = reqCount + 1
       }
-      sinkCount = sinkCount + 1
+      offset = offset + 1
     }
-    x$brefs = brefs
-    rm(brefs)
+    cat('\r100.0%\n')
+    x$bref = brefs
+    x$fref = frefs
+    rm(brefs, frefs)
   }
   if(!debug)
     x[,reqs:=NULL]
+
   ## remove src and tag from req sinks, convert back from list
-  x$src = unlist(rowApply(x, function(row){
-    if(row$name %in% MPI_Req_sinks)
-      as.integer(NA)
-    else
-      row$src
-  }))
-  x$tag = unlist(rowApply(x, function(row){
-    if(row$name %in% MPI_Req_sinks)
-      as.integer(NA)
-    else
-      row$tag
-    }))
+  x[name %in% MPI_Req_sinks, src := as.integer(NA)]
+  x[, src := unlist(src)]
+
+  x[name %in% MPI_Req_sinks, tag := as.integer(NA)]
+  x[, tag := unlist(tag)]
+
   if(writeReplay){
     cat('Rank', rank, 'writing replay\n')
     ##!@todo the replay fscanf is going to trip on NAs
@@ -403,10 +445,10 @@ readAll = function(path='.'){
   return(list(runtimes = x, comms = commTable))
 }
 
-preDeps = function(x, ...){
-  ranks = sapply(x, function(x) unique(x$rank))
+preDeps = function(x, uidsByReq, ...){
+  ranks = as.integer(names(x))
   
-  x = mclapply(x, .deps, maxRank=max(ranks), ...)
+  x = mcmapply(.deps, x, ranks, uidsByReq, ..., SIMPLIFY=F)
   return(x)
 }
 
@@ -625,6 +667,7 @@ messageDeps = function(x){
     names(result) = c('o_src', 'src', 'o_dest', 'dest')
     return(result)
   }
+  debug(f)
   ## srDeps holds source and destination UIDs for matching messages
   srDeps = mclapply(1:nrow(mids), f)
   ## this is slower than rbindlist, but doesn't segfault
@@ -861,7 +904,8 @@ shortStats = function(x, thresh=.001){
 run = function(path='.', saveResult=F, name='merged.Rsave'){
   a = readAll(path)
   assignments = a$assignments
-  b = preDeps(a$runtimes, path=path)
+  uidsByReq = a$uidsByReq
+  b = preDeps(a$runtimes, uidsByReq, path=path)
   rm(a)
   b = deps(b)
   comms = b$comms
