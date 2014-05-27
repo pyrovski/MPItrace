@@ -116,6 +116,7 @@ reduceConfs = function(x){
   x$runtimes$date = NULL
   x$runtimes$start = NULL
   by = c('uid',confCols)
+  cat('Reducing between configs\n')
   if(T){
     nonMeasurementCols = setdiff(names(x$runtimes), measurementCols)
     x$reduced =
@@ -140,6 +141,7 @@ reduceConfs = function(x){
   }
   x$runtimes = NULL
  
+  cat('Message edges\n')
   ## all message edges should be identical between runs
   ##x$messageEdges = x$messageEdges[[1]]
   x$messageEdges = rbindlist(x$messageEdges)
@@ -154,6 +156,7 @@ reduceConfs = function(x){
                    setdiff(names(x$messageEdges),
                            c('weight')), c('s_uid','d_uid',confCols))
   
+  cat('Computation edges\n')
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
@@ -176,6 +179,7 @@ reduceConfs = function(x){
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
 
+  cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule)
   ##g = schedule$g
   x$schedule = schedule$edges
@@ -187,6 +191,7 @@ reduceConfs = function(x){
   setkey(x$edges, s_uid, d_uid, type)
   x$edges[x$schedule, e_uid:=e_uid]
 
+  cat('Pareto frontiers and slack edges\n')
   ## get pareto frontiers
   x$edges = pareto(x$edges)
 
