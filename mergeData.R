@@ -177,24 +177,14 @@ reduceConfs = function(x){
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
 
   schedule = getSchedule(x$schedule)
-  g = schedule$g
+  ##g = schedule$g
   x$schedule = schedule$edges
+  x$critPath = schedule$critPath
   rm(schedule)
   
-  setkey(x$schedule, start, weight)
-  x$schedule$e_uid = 1:nrow(x$schedule)
-
-  ## critical path
-  setkey(x$schedule, src)
-
-  ## store e_uid for edges on the longest path.
-  ## edges in topological order: x$schedule[J(x$vertices)]
-  x$longestPath = longest.path(x$schedule[J(x$vertices)], x$vertices, g)
-  rm(g)
-
   ## copy e_uid to edges
-  setkey(x$schedule, s_uid, d_uid)
-  setkey(x$edges, s_uid, d_uid)
+  setkey(x$schedule, s_uid, d_uid, type)
+  setkey(x$edges, s_uid, d_uid, type)
   x$edges[x$schedule, e_uid:=e_uid]
 
   ## get pareto frontiers
@@ -203,10 +193,11 @@ reduceConfs = function(x){
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
-  x$edges = slackEdges(x$edges, x$longestPath)
+  x$edges = slackEdges(x$edges, x$critPath)
   x$edges[is.na(weight), weight:=0]
 
-  ## recompute schedule with slack edges
+  ## Recompute schedule with slack edges. This will not change the
+  ## critical path because no slack edges are on it.
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(e_uid)]
   ## get topological order again and add start times
   schedule = getSchedule(x$schedule)
