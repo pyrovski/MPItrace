@@ -922,6 +922,8 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   ##else
   ##  g = NA
 
+  tableToMarkov(data.table::copy(b2), path=path)
+  
   result =
     list(runtimes = b2,
          messageEdges = g$messageEdges,

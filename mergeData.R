@@ -191,13 +191,14 @@ reduceConfs = function(x){
   setkey(x$edges, s_uid, d_uid, type)
   x$edges[x$schedule, e_uid:=e_uid]
 
-  cat('Pareto frontiers and slack edges\n')
+  cat('Pareto frontiers\n')
   ## get pareto frontiers
   x$edges = pareto(x$edges)
 
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
+  cat('Slack edges\n')
   x$edges = slackEdges(x$edges, x$critPath)
   x$edges[is.na(weight), weight:=0]
 
