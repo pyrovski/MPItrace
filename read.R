@@ -36,6 +36,7 @@ colClasses = c(
   tag='character', ## converted later to integer
   comm='character',
   hash='character',
+  flags='numeric',
   pkg_w='numeric',
   pp0_w='numeric',
   dram_w='numeric',
@@ -209,7 +210,7 @@ readAll = function(path='.'){
   ## runtime
   files = sort(list.files(path,'runtime.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
-  runtimes = lapply(files, readRuntime, maxRank=max(ranks), path=path)
+  runtimes = mclapply(files, readRuntime, maxRank=max(ranks), path=path)
   names(runtimes) = ranks
   uidsByReq = lapply(runtimes, '[[', 'uidsByReq')
   runtimes = lapply(runtimes, '[[', 'runtime')
@@ -460,7 +461,7 @@ preDeps = function(x, uidsByReq, ...){
 
 deps = function(x){
   if(debug)
-    cat('Merging tables and remapping UIDs\n')
+    cat('Merging tables\n')
   ## merge tables
   commTable = rbindlist(lapply(x, '[[', 'comms'))
  
@@ -634,21 +635,21 @@ messageDeps = function(x){
   }
 
   setkey(x, src, dest, size, tag, comm)
-  ## rbindlist makes shitty data tables?
+  canceledUIDs = x[name == 'MPI_Cancel', uid]
   f = function(mid){
-    matching = x[mids[mid]][order(uid)]
-    canceled =
-      x[uid %in% matching[!is.na(fref), fref] & name == 'MPI_Cancel', uid]
-### ignore canceled requests and requests not waited for
-    matching =
-      matching[!fref %in% canceled & !is.na(fref) | !name %in% MPI_Req_sources]
+    matching = x[mids[mid]]
+
+    ## ignore canceled requests
+    matching = matching[is.na(fref) | !fref %in% canceledUIDs]
+    ## ignore requests not waited for
+    matching = matching[!name %in% MPI_Req_sources | !is.na(fref)]
     if(nrow(matching) < 1){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
     }
     
-    sends = matching[name %in% MPI_Sends]
-    recvs = matching[name %in% MPI_Recvs]
+    sends = matching[name %in% MPI_Sends][order(uid)]
+    recvs = matching[name %in% MPI_Recvs][order(uid)]
     if(debug)
       cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends),
           'messages\n')
@@ -671,7 +672,8 @@ messageDeps = function(x){
 
   ## srDeps holds source and destination UIDs for matching messages
   srDeps = mclapply(1:nrow(mids), f)
-  ## this is slower than rbindlist, but doesn't segfault
+  ## this is slower than rbindlist, but doesn't segfault. rbindlist
+  ## makes shitty data tables?
   srDeps = do.call(rbind, srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
   
