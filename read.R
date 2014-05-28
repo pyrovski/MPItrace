@@ -715,7 +715,9 @@ messageDeps = function(x){
 tableToGraph = function(x, assignments, messages, saveGraph=T){
 
   #host = unique(sub('[[:digit:]]+', '', assignments$hostname))
-  
+
+###!@todo this is slow; we should be able to do this without so many
+###!joins because the computation and communication rows alternate.
   if(debug)
     cat('Computation edges\n')
   ## replace computation vertices with weighted edges
