@@ -172,7 +172,10 @@ readGlobal = function(path = '.', filename = "glog.dat"){
 
 readRuntime = function(filename, maxRank, path='.'){
   filename = file.path(path, filename)
-  firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
+
+###!@todo if the disk quota is exceeded, the runtime files will exist
+###!but be empty.
+  firstLine = strsplit(readLines(filename, n=1),'\t')[[1]],
   a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
   a[size == MPI_UNDEFINED,]$size = NA
   a[dest == MPI_UNDEFINED,]$dest = NA
@@ -625,13 +628,8 @@ messageDeps = function(x){
       dest = r$uid
       o_dest = dest
     }
-    ## if(!is.na(s$fref)){
-    ##   src = s$fref
-    ##   o_src = s$uid
-    ## } else {
     src = s$uid
     o_src = src
-    ##}
     return(list(o_src=o_src, src=src, o_dest = o_dest, dest=dest))
   }
 
@@ -909,6 +907,7 @@ shortStats = function(x, thresh=.001){
 }
 
 run = function(path='.', saveResult=F, name='merged.Rsave'){
+  cat('Reading ', path,' (', getwd(), ')\n')
   a = readAll(path)
   assignments = a$assignments
   uidsByReq = a$uidsByReq
