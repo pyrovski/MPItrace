@@ -7,6 +7,8 @@
 ## documentations says lists are supported. This is not present in the
 ## most recent code (1.93), though.
 
+##!@todo what happens to spin rows?
+
 source('~/local/bin/pbutils.R')
 
 require('data.table')
@@ -20,7 +22,8 @@ debug=T
 #options(mc.cores=16)
 options(datatable.nomatch=0)
 
-flagBits = list(omp=1)
+#!@todo get this from a file
+flagBits = list(omp=1, spin=2) ## bit masks, not indices
 minDuration = .0000001
 
 colClasses = c(
@@ -808,8 +811,10 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   if(debug)
     cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
-  if(saveGraph)
+  if(saveGraph){
     write.graph(g, file='graph.dot', format='dot')
+    system('gzip graph.dot', wait=F)
+  }
   return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges))
 }
 
