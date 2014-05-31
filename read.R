@@ -725,50 +725,26 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
     cat('Computation edges\n')
   startTime = Sys.time()
   ## replace computation vertices with weighted edges
-  ##y = data.table::copy(x)
   setkey(x, rank, uid)
-  ##setkey(y, vertex)
-  compEdges = list()
-  f = function(i){
-    ##key = data.table(rank=r, uid=uid)
-    ##setkey(key)
-    ##i = x[key, which=T]
-    s = x[i]
-    d = x[i+1]
-    ##result = data.frame(src=x[i-1]$vertex, d[,list(dest=vertex, d_uid=uid)], s[,list(power=pkg_w+pp0_w+dram_w,s_uid=uid,flags)]
-    result =
-      data.frame(src=x[i-1]$vertex,
-                 dest=d$vertex,
-                 weight=s$duration,
-                 power=s$pkg_w+s$pp0_w+s$dram_w,
-                 s_uid=s$uid,
-                 d_uid=d$uid,
-                 flags=s$flags)
-    ## if(any(is.na(y[J(result$src)]$name))){
-    ##   cat('comp->comp!\n')
-    ##   print(e)
-    ##   print(y[J(c(result$src, result$dest))])
-    ##   print(result)
-    ## }
-    return(result)
-  }
-  for(r in unique(x[, rank])){
-    ##uids = x[J(r)][is.na(name), uid]
+  f = function(r){
     sel = x[rank == r & is.na(name), which=T]
-    rCompEdges = mclapply(sel, f)
-    compEdges[[as.character(r)]] = rbindlist(rCompEdges)
+    cbind(x[sel, list(weight=duration,power=pkg_w+pp0_w+dram_w,s_uid=uid,flags)],
+          x[sel-1,list(src=vertex)],
+          x[sel+1,list(dest=vertex, d_uid=uid)])
   }
+  compEdges = rbindlist(mclapply(unique(x[, rank]), f))
+  cat('Comp edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+
   ## delete computation rows
   x = x[!is.na(name)]
 
-  compEdges = rbindlist(compEdges)
-
-  cat('Comp edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-  startTime = Sys.time()
   if(debug)
     cat('Deleting computation predecessors\n')
   ## delete dependencies on computation vertices
+  ##!@todo this takes forever
   x$deps = mclapply(x$deps, function(e) x[J(e)]$uid)
+  cat('Comp edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
 
   ##!@todo decide how to handle collectives (decompose, single vertex, etc.)
 
