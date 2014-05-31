@@ -650,7 +650,7 @@ messageDeps = function(x){
     
     sends = matching[name %in% MPI_Sends][order(uid)]
     recvs = matching[name %in% MPI_Recvs][order(uid)]
-    if(debug)
+    if(debug && !(mid %% 100))
       cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends),
           'messages\n')
     ## if a receive has a request, the send dependency leads to the
@@ -720,38 +720,49 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   #host = unique(sub('[[:digit:]]+', '', assignments$hostname))
 
 ###!@todo this is slow; we should be able to do this without so many
-###!joins because the computation and communication rows alternate.
+###!joins because the computation and communication rows alternate (per rank).
   if(debug)
     cat('Computation edges\n')
+  startTime = Sys.time()
   ## replace computation vertices with weighted edges
-  setkey(x, uid)
-  y = data.table::copy(x)
-  setkey(y, vertex)
-  uids = x[is.na(name), uid]
-  compEdges = rbindlist(mclapply(uids,
-    function(u) {
-      s=x[J(u)]
-      d=x[J(s$succ)]
-      result =
-        data.frame(src=x[J(unlist(s$deps))]$vertex,
-                   dest=d$vertex,
-                   weight=s$duration,
-                   power=s$pkg_w+s$pp0_w+s$dram_w,
-                   s_uid=s$uid,
-                   d_uid=d$uid,
-                   flags=s$flags)
-      ## if(any(is.na(y[J(result$src)]$name))){
-      ##   cat('comp->comp!\n')
-      ##   print(e)
-      ##   print(y[J(c(result$src, result$dest))])
-      ##   print(result)
-      ## }
-      return(result)
-    }))
-
+  ##y = data.table::copy(x)
+  setkey(x, rank, uid)
+  ##setkey(y, vertex)
+  compEdges = list()
+  f = function(uid){
+    key = data.table(rank=r, uid=uid)
+    setkey(key)
+    i = x[key, which=T]
+    s = x[i]
+    d = x[i+1]
+    result =
+      data.frame(src=x[i-1]$vertex,
+                 dest=d$vertex,
+                 weight=s$duration,
+                 power=s$pkg_w+s$pp0_w+s$dram_w,
+                 s_uid=s$uid,
+                 d_uid=d$uid,
+                 flags=s$flags)
+    ## if(any(is.na(y[J(result$src)]$name))){
+    ##   cat('comp->comp!\n')
+    ##   print(e)
+    ##   print(y[J(c(result$src, result$dest))])
+    ##   print(result)
+    ## }
+    return(result)
+  }
+  for(r in unique(x[, rank])){
+    uids = x[J(r)][is.na(name), uid]
+    rCompEdges = mclapply(uids, f)
+    compEdges[[as.character(r)]] = rbindlist(rCompEdges)
+  }
   ## delete computation rows
   x = x[!is.na(name)]
 
+  compEdges = rbindlist(compEdges)
+
+  cat(Sys.time() - startTime)
+  startTime = Sys.time()
   if(debug)
     cat('Deleting computation predecessors\n')
   ## delete dependencies on computation vertices
