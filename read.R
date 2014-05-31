@@ -729,12 +729,13 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   setkey(x, rank, uid)
   ##setkey(y, vertex)
   compEdges = list()
-  f = function(uid){
-    key = data.table(rank=r, uid=uid)
-    setkey(key)
-    i = x[key, which=T]
+  f = function(i){
+    ##key = data.table(rank=r, uid=uid)
+    ##setkey(key)
+    ##i = x[key, which=T]
     s = x[i]
     d = x[i+1]
+    ##result = data.frame(src=x[i-1]$vertex, d[,list(dest=vertex, d_uid=uid)], s[,list(power=pkg_w+pp0_w+dram_w,s_uid=uid,flags)]
     result =
       data.frame(src=x[i-1]$vertex,
                  dest=d$vertex,
@@ -752,8 +753,9 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
     return(result)
   }
   for(r in unique(x[, rank])){
-    uids = x[J(r)][is.na(name), uid]
-    rCompEdges = mclapply(uids, f)
+    ##uids = x[J(r)][is.na(name), uid]
+    sel = x[rank == r & is.na(name), which=T]
+    rCompEdges = mclapply(sel, f)
     compEdges[[as.character(r)]] = rbindlist(rCompEdges)
   }
   ## delete computation rows
@@ -761,7 +763,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
 
   compEdges = rbindlist(compEdges)
 
-  cat(Sys.time() - startTime)
+  cat('Comp edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   if(debug)
     cat('Deleting computation predecessors\n')
