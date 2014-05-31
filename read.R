@@ -318,7 +318,7 @@ readAll = function(path='.'){
 
   ## sequential dependencies
   rows = 1:nrow(x)
-  x$deps[tail(rows, -1)] = x$uid[head(rows, -1)]
+  ##x$deps[tail(rows, -1)] = x$uid[head(rows, -1)]
   x$succ[head(rows, -1)] = x$uid[tail(rows, -1)]
 
   ## get backrefs for blocking receives and waits,
@@ -719,8 +719,6 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
 
   #host = unique(sub('[[:digit:]]+', '', assignments$hostname))
 
-###!@todo this is slow; we should be able to do this without so many
-###!joins because the computation and communication rows alternate (per rank).
   if(debug)
     cat('Computation edges\n')
   startTime = Sys.time()
@@ -738,11 +736,6 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   ## delete computation rows
   x = x[!is.na(name)]
 
-  if(debug)
-    cat('Deleting computation predecessors\n')
-  ## delete dependencies on computation vertices
-  ##!@todo this takes forever
-  x$deps = mclapply(x$deps, function(e) x[J(e)]$uid)
   cat('Comp edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
 
