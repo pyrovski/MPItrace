@@ -630,23 +630,6 @@ messageDeps = function(x){
     return(list(runtimes=x, messages=NULL))
   }
 
-  f_noSideEffects = function(s, r){
-    ## handle Irecvs by forwarding to corresponding MPI_Wait()s
-    if(!is.na(r$fref)){
-      dest = unlist(r$fref) ## uid
-      o_dest = r$uid ## uid
-    } else {
-      dest = r$uid ## uid
-      o_dest = dest ## uid
-    }
-    src = s$uid ## uid
-    o_src = src ## uid
-    result =
-      data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
-                 size=s$size)
-    return(result)
-  }
-
   xStarts = x[name %in% MPI_Req_starts]
   setkey(xStarts, uid)
   setkey(x, src, dest, size, tag, comm)
@@ -706,6 +689,25 @@ messageDeps = function(x){
       stop(errMsg)
     }
 
+    f_noSideEffects = function(s, r){
+      ## handle Irecvs by forwarding to corresponding MPI_Wait()s
+      if(!is.na(r$fref)){
+        dest = unlist(r$fref) ## uid
+        o_dest = r$uid ## uid
+        dest_vertex = as.numeric(NA)
+      } else {
+        dest = r$uid ## uid
+        o_dest = dest ## uid
+        dest_vertex = r$vertex
+      }
+      src = s$uid ## uid
+      o_src = src ## uid
+      return(data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
+                        size=s$size,
+                        src_vertex=s$vertex, dest_vertex=dest_vertex,
+                        src_rank=s$rank, dest_rank=r$rank))
+    }
+
     result =
       lapply(1:nrow(sends), function(row)
              f_noSideEffects(sends[row], recvs[row]))
@@ -719,6 +721,14 @@ messageDeps = function(x){
   ## makes shitty data tables?
   srDeps = do.call(rbind, srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
+
+  ## find dest vertices for nonblocking receives
+  setkey(x, uid)
+  missingVertices = srDeps[is.na(dest_vertex), which=T]
+  if(length(missingVertices)){
+    dest_uids = srDeps[missingVertices, dest]
+    srDeps[missingVertices, dest_vertex := x[J(dest_uids), vertex]]
+  }
   
   if(debug)
     cat('Done finding message matches\n')
@@ -800,12 +810,12 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   ## compute message source and dest vertices with weight (latency)
   f = function(row){
     size = row$size
-    xs = x[J(row$src)]
-    xd = x[J(row$dest)]
-    src_vertex = xs$vertex
-    dest_vertex = xd$vertex
-    src_host = assignments[J(xs$rank), hostname]
-    dest_host = assignments[J(xd$rank), hostname]
+    ##xs = x[J(row$src)]
+    ##xd = x[J(row$dest)]
+    src_vertex = row$src_vertex
+    dest_vertex = row$dest_vertex
+    src_host = assignments[J(row$src_rank), hostname]
+    dest_host = assignments[J(row$dest_rank), hostname]
     
     weight =
       if(src_host == dest_host)
@@ -824,11 +834,13 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
     cat('Communication edges\n')
   ## add communication edges
   if(!is.null(messages) && nrow(messages)){
-    messageEdges = rbindlist(rowApply(messages, f))
+    messageEdges = rbindlist(mcrowApply(messages, f))
     edges = rbind(compEdges[,list(src,dest,weight,s_uid,d_uid)], messageEdges)
   } else
     messageEdges = NA
     
+  cat('Comm edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   if(debug)
     cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
@@ -836,6 +848,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
     write.graph(g, file='graph.dot', format='dot')
     system('gzip graph.dot', wait=F)
   }
+  cat('Graph object time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges))
 }
 
@@ -950,8 +963,9 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
                  messages=messages)
   ##else
   ##  g = NA
-
+  startTime = Sys.time()
   tableToMarkov(data.table::copy(b2), path=path)
+  cat('Markov time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   
   result =
     list(runtimes = b2,
