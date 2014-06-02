@@ -943,15 +943,24 @@ shortStats = function(x, thresh=.001){
 }
 
 run = function(path='.', saveResult=F, name='merged.Rsave'){
+  startTime = Sys.time()
   cat('Reading ', path,' (', getwd(), ')\n')
   a = readAll(path)
+  cat('Read time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   assignments = a$assignments
   uidsByReq = a$uidsByReq
   b = preDeps(a$runtimes, uidsByReq, path=path)
+  cat('preDeps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   rm(a)
   b = deps(b)
+  cat('deps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   comms = b$comms
   b2 = messageDeps(b)
+  cat('messageDeps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   messages = b2$messages
   b2 = b2$runtimes
   rm(b)
@@ -963,9 +972,11 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
                  messages=messages)
   ##else
   ##  g = NA
+  cat('tableToGraph time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   tableToMarkov(data.table::copy(b2), path=path)
   cat('Markov time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   
   result =
     list(runtimes = b2,
@@ -974,7 +985,9 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
          assignments = assignments,
          comms = comms,
          globals=globals)
-  if(saveResult)
+  if(saveResult){
     with(result, save(list=ls(), file=file.path(path,name)))
+    cat('save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  }
   return(result)
 }
