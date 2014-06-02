@@ -83,9 +83,11 @@ MPI_Irecvs =
 MPI_Req_sources =
   c(MPI_Isends, MPI_Irecvs)
 
-MPI_Req_inits =
+MPI_Send_inits = 
   c('MPI_Bsend_init',
-    'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init','MPI_Recv_init')
+    'MPI_Rsend_init','MPI_Send_init','MPI_Ssend_init')
+MPI_Recv_inits = c('MPI_Recv_init')
+MPI_Req_inits = c(MPI_Send_inits, MPI_Recv_inits)
 
 ## these calls don't generate or terminate the request(s), but
 ## initiate the communication; they act as both sinks (from _init())
@@ -253,10 +255,6 @@ readAll = function(path='.'){
 
   x$vertex = as.numeric(NA)
 
-  # numeric for now, list later
-  ## deps: predecessors
-  x$deps = as.numeric(NA)
-
   ## succ: successors (only maintained per rank)
   x$succ = as.numeric(NA)
   
@@ -406,6 +404,8 @@ readAll = function(path='.'){
           if(x[reqIndex, name] %in% c(MPI_Req_sources, MPI_Req_starts)){
             lastSource = reqIndex
             reqState = factor('active', levels=reqStates)
+            brefs[[reqIndex]] = union(brefs[[reqIndex]], lastInit)
+            frefs[[lastInit]] = union(frefs[[lastInit]], reqIndex)
           } else if(x[reqIndex, name] %in% MPI_Req_frees){
             reqState = factor('inactive')
           } else if(x[reqIndex, name] %in% MPI_Req_inits){
@@ -420,7 +420,14 @@ readAll = function(path='.'){
       offset = offset + 1
     }
     cat('\r100.0%\n')
+    ##! these are indices, but need to be uids
+    sel = which(!sapply(brefs, is.null))
+    ## x key must be uid
+    brefs[sel] = lapply(brefs[sel], function(b) x[b, uid])
     x$bref = brefs
+
+    sel = which(!sapply(frefs, is.null))
+    frefs[sel] = lapply(frefs[sel], function(b) x[b, uid])
     x$fref = frefs
     rm(brefs, frefs)
   }
@@ -606,8 +613,9 @@ messageDeps = function(x){
   commTable = x$comms
   x = x$runtimes
 
-  ##!@todo MPI_Start and MPI_Startall will be sends and/or receives
-  mids = unique(x[name %in% c(MPI_Sends, MPI_Recvs), list(src, dest, size, tag, comm)])
+  mids =
+    unique(x[name %in% c(MPI_Sends, MPI_Recvs, MPI_Req_inits),
+             list(src, dest, size, tag, comm)])
   sel = complete.cases(mids)
   if(length(which(!sel))){
     cat('Removing', length(which(!sel)), 'message IDs:\n')
@@ -623,17 +631,19 @@ messageDeps = function(x){
   f_noSideEffects = function(s, r){
     ## handle Irecvs by forwarding to corresponding MPI_Wait()s
     if(!is.na(r$fref)){
-      dest = r$fref
-      o_dest = r$uid
+      dest = r$fref ## uid
+      o_dest = r$uid ## uid
     } else {
-      dest = r$uid
-      o_dest = dest
+      dest = r$uid ## uid
+      o_dest = dest ## uid
     }
-    src = s$uid
-    o_src = src
+    src = s$uid ## uid
+    o_src = src ## uid
     return(list(o_src=o_src, src=src, o_dest = o_dest, dest=dest))
   }
 
+  xStarts = x[name %in% MPI_Req_starts]
+  setkey(xStarts, uid)
   setkey(x, src, dest, size, tag, comm)
   canceledUIDs = x[name == 'MPI_Cancel', uid]
   f = function(mid){
@@ -647,9 +657,27 @@ messageDeps = function(x){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
     }
+
+    sends = matching[name %in% MPI_Sends]
+    recvs = matching[name %in% MPI_Recvs]
     
-    sends = matching[name %in% MPI_Sends][order(uid)]
-    recvs = matching[name %in% MPI_Recvs][order(uid)]
+    if(nrow(xStarts)){
+      sendInits = unlist(matching[name %in% MPI_Send_inits, fref])
+      if(length(sendInits)){
+        sendStarts = xStarts[J(sendInits)]
+        sends = rbind(sends, sendStarts)
+        rm(sendStarts, sendInits)
+      }
+      recvInits = unlist(matching[name %in% MPI_Recv_inits, fref])
+      if(length(recvInits)){
+        recvStarts = xStarts[J(recvInits)]
+        recvs = rbind(recvs, recvStarts)
+        rm(recvStarts, recvInits)
+      }
+    }
+    sends = sends[order(uid)]
+    recvs = recvs[order(uid)]
+    
     if(debug && !(mid %% 100))
       cat('Message ID', mid, 'of', nrow(mids), ':', nrow(sends),
           'messages\n')
@@ -680,32 +708,30 @@ messageDeps = function(x){
   if(debug)
     cat('Done finding message matches\n')
 
+
+  ##!@todo fix; x$deps is no more
   setkey(x, uid)
   ## find indices with multiple references
   setkey(srDeps, dest)
-  destRLE = rle(srDeps$dest)
-  multDests = destRLE$values[destRLE$lengths > 1]
+  destTable = table(srDeps[, dest])
+  multDests = as.numeric(names(destTable[destTable > 1]))
 
   ## complete the indices with single references
-  sel = setdiff(srDeps$dest, multDests)
-  if(length(sel)){
-    d = x$deps
-    d[x[J(sel), which=T]] = mapply(c, d[x[J(sel), which=T]], srDeps[J(sel)]$src, SIMPLIFY=F)
-    x$deps = d
-    rm(d)
-  }
+  singleDests = as.numeric(names(destTable[destTable == 1]))
+  deps = vector('list', nrow(x))
+  if(length(singleDests))
+    deps[x[J(singleDests), which=T]] = srDeps[J(singleDests)]$src ## uid
 
   ## complete the indices with multiple references
   if(length(multDests)){
-    d = x$deps
     sel = x[J(multDests), which=T]
-    d[sel] =
-      mapply(c, d[sel],
+    deps[sel] =
+      mapply(c, deps[sel],
              lapply(multDests,
                     function(d) srDeps[J(d)]$src), SIMPLIFY=F)
-    x$deps = d
-    rm(d)
   }
+  x$deps = deps
+  rm(deps)
     
   if(debug)
     cat('Done matching messages\n')
@@ -731,7 +757,6 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
           x[sel+1,list(dest=vertex, d_uid=uid)])
   }
   compEdges = rbindlist(mclapply(unique(x[, rank]), f))
-  cat('Comp edges time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 
   ## delete computation rows
   x = x[!is.na(name)]
