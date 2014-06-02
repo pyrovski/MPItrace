@@ -612,10 +612,12 @@ messageDeps = function(x){
 
   commTable = x$comms
   x = x$runtimes
+  messageCols = c('src', 'dest', 'size', 'tag', 'comm')
+  nonMessageCols = setdiff(names(x), messageCols)
 
   mids =
     unique(x[name %in% c(MPI_Sends, MPI_Recvs, MPI_Req_inits),
-             list(src, dest, size, tag, comm)])
+             messageCols, with=F])
   sel = complete.cases(mids)
   if(length(which(!sel))){
     cat('Removing', length(which(!sel)), 'message IDs:\n')
@@ -631,7 +633,7 @@ messageDeps = function(x){
   f_noSideEffects = function(s, r){
     ## handle Irecvs by forwarding to corresponding MPI_Wait()s
     if(!is.na(r$fref)){
-      dest = r$fref ## uid
+      dest = unlist(r$fref) ## uid
       o_dest = r$uid ## uid
     } else {
       dest = r$uid ## uid
@@ -639,13 +641,17 @@ messageDeps = function(x){
     }
     src = s$uid ## uid
     o_src = src ## uid
-    return(list(o_src=o_src, src=src, o_dest = o_dest, dest=dest))
+    result =
+      data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
+                 size=s$size)
+    return(result)
   }
 
   xStarts = x[name %in% MPI_Req_starts]
   setkey(xStarts, uid)
   setkey(x, src, dest, size, tag, comm)
   canceledUIDs = x[name == 'MPI_Cancel', uid]
+  
   f = function(mid){
     matching = x[mids[mid]]
 
@@ -658,21 +664,31 @@ messageDeps = function(x){
       return(data.frame())
     }
 
+    setkey(matching, uid)
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
     
     if(nrow(xStarts)){
-      sendInits = unlist(matching[name %in% MPI_Send_inits, fref])
-      if(length(sendInits)){
-        sendStarts = xStarts[J(sendInits)]
+      sendInit_frefs = unlist(matching[name %in% MPI_Send_inits, fref])
+      if(length(sendInit_frefs)){
+        sendStarts = xStarts[J(sendInit_frefs), nonMessageCols, with=F]
+###!@ todo all messageCols should be identical, so something like this
+###!should work: rbindlist(rep.int(mids[mid], nrow(sendStarts))))
+        sendStarts =
+          cbind(sendStarts, 
+                matching[J(unlist(sendStarts[, bref])), messageCols, with=F])
+        setcolorder(sendStarts, names(x))
         sends = rbind(sends, sendStarts)
-        rm(sendStarts, sendInits)
+        rm(sendStarts, sendInit_frefs)
       }
-      recvInits = unlist(matching[name %in% MPI_Recv_inits, fref])
-      if(length(recvInits)){
-        recvStarts = xStarts[J(recvInits)]
+      recvInit_frefs = unlist(matching[name %in% MPI_Recv_inits, fref])
+      if(length(recvInit_frefs)){
+        recvStarts = xStarts[J(recvInit_frefs), nonMessageCols, with=F]
+        recvStarts =
+          cbind(recvStarts, matching[J(unlist(recvStarts[, bref])), messageCols, with=F])
+        setcolorder(recvStarts, names(x))
         recvs = rbind(recvs, recvStarts)
-        rm(recvStarts, recvInits)
+        rm(recvStarts, recvInit_frefs)
       }
     }
     sends = sends[order(uid)]
@@ -693,8 +709,7 @@ messageDeps = function(x){
     result =
       lapply(1:nrow(sends), function(row)
              f_noSideEffects(sends[row], recvs[row]))
-    result = as.data.frame(do.call(rbind, result))
-    names(result) = c('o_src', 'src', 'o_dest', 'dest')
+    result = rbindlist(result)
     return(result)
   }
 
@@ -709,7 +724,6 @@ messageDeps = function(x){
     cat('Done finding message matches\n')
 
 
-  ##!@todo fix; x$deps is no more
   setkey(x, uid)
   ## find indices with multiple references
   setkey(srDeps, dest)
@@ -785,7 +799,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   
   ## compute message source and dest vertices with weight (latency)
   f = function(row){
-    size = x[J(row$o_src)]$size
+    size = row$size
     xs = x[J(row$src)]
     xd = x[J(row$dest)]
     src_vertex = xs$vertex
