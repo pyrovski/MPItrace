@@ -281,9 +281,6 @@ go = function(){
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
 
-  ##!
-  entries = entries[ranks==8]
-
   entrySpace <<- unique(entries[,entryCols,with=F])
   setkey(entrySpace)
   setkeyv(entries, entryCols)
