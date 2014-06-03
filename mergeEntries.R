@@ -55,7 +55,10 @@ entryCols =
   intersect(c('ranksPerNode','ranks','command'),
             names(entries))
 confCols =
-  intersect(c('OMP_NUM_THREADS'),
-            names(entries))
+  intersect(
+    c('OMP_NUM_THREADS', ## number of OpenMP threads
+      'cpuFreq'          ## static CPU frequency in kHz
+      ),
+    names(entries))
 
 save(file=f_args[2], entries, entryCols, confCols)
