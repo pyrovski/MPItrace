@@ -28,7 +28,8 @@ getEntryData = function(entry){
   for(col in confCols){
     result$runtimes[[col]] = entry[[col]]
     result$compEdges[[col]] = entry[[col]]
-    result$messageEdges[[col]] = entry[[col]]
+    if(!is.na(result$messageEdges))
+      result$messageEdges[[col]] = entry[[col]]
   }
   return(result)
 }
@@ -149,33 +150,41 @@ reduceConfs = function(x){
  
   cat('Message edges\n')
   ## all message edges should be identical between runs
-  ##x$messageEdges = x$messageEdges[[1]]
-  x$messageEdges = rbindlist(x$messageEdges)
-  by = c('s_uid','d_uid',confCols)
-  x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
-  x$messageEdges[, type:='message']
-  setkey(x$reduced, uid)
-  ## message edges can convert to slack edges, so we need the destination rank
-  x$messageEdges[, rank:=x$reduced[J(x$messageEdges[,d_uid,by=d_uid]), rank]]
-  x$messageEdges =
-    reduceNoEffect(x$messageEdges, c('weight'),
-                   setdiff(names(x$messageEdges),
-                           c('weight')), c('s_uid','d_uid',confCols))
+  if(any(sapply(x$messageEdges, is.na))){
+    cat('No message edges in at least one run\n')
+    x$messageEdges = NULL
+  } else {
+    x$messageEdges = rbindlist(x$messageEdges)
+    by = c('s_uid','d_uid',confCols)
+    x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
+    x$messageEdges[, type:='message']
+    setkey(x$reduced, uid)
+    ## message edges can convert to slack edges, so we need the destination rank
+    x$messageEdges[, rank:=x$reduced[J(x$messageEdges[,d_uid,by=d_uid]), rank]]
+    x$messageEdges =
+      reduceNoEffect(x$messageEdges, c('weight'),
+                     setdiff(names(x$messageEdges),
+                             c('weight')), c('s_uid','d_uid',confCols))
+  }
   
   cat('Computation edges\n')
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   x$compEdges[, type:='comp']
+  setkey(x$reduced, uid)
   x$compEdges[, rank:=x$reduced[J(x$compEdges[,d_uid,by=d_uid]), rank]]
   x$compEdges =
     reduceNoEffect(x$compEdges, c('weight','power'),
                    setdiff(names(x$compEdges),
                            c('weight','power')), c('s_uid','d_uid',confCols))
 
-  setkey(x$messageEdges)
-  setkey(x$compEdges, NULL)
-  x$edges = merge(x$messageEdges, x$compEdges, all=T)
+  if(!is.null(x$messageEdges)){
+    setkey(x$messageEdges)
+    setkey(x$compEdges, NULL)
+    x$edges = merge(x$messageEdges, x$compEdges, all=T)
+  } else
+    x$edges = x$compEdges
 
   ## set power to zero for message edges
   x$edges[is.na(power), power:=0]
@@ -195,7 +204,7 @@ reduceConfs = function(x){
   ## copy e_uid to edges
   setkey(x$schedule, s_uid, d_uid, type)
   setkey(x$edges, s_uid, d_uid, type)
-  x$edges[x$schedule, e_uid:=e_uid]
+  x$edges = x$edges[x$schedule[, list(s_uid, d_uid, type, e_uid)]]
 
   cat('Pareto frontiers\n')
   ## get pareto frontiers
