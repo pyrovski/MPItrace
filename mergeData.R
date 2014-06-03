@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 ##!@todo group by contents of command file
-#options(mc.cores=16)
+options(mc.cores=16)
 
 source('~/local/bin/pbutils.R')
 source('./read.R')
@@ -325,8 +325,8 @@ go = function(){
     cat('Done writing timeslices\n')
     return(list(merged=merged, reduced=reduced))
   }
-  result = mcrowApply(entrySpace, f)
-  
+  result <<- mcrowApply(entrySpace, f)
+  names(result) <<- entrySpace$key
   
   save(measurementCols, result, entrySpace, countedEntryspace,
        entryCols, entries, confSpace, confCols,
