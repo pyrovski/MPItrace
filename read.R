@@ -352,14 +352,14 @@ readAll = function(path='.'){
     reqProgress = function(req, offset) (unname(reqCumsum[req]) + offset)/reqCount
 ###!@todo this could be parallelized if the brefs and frefs lists were
 ###!merged afterward
-    offset = 1
     cat('Tracking request states:\n')
     reqWarning = function()
       warning('uid ', x[reqIndex, uid], ': invalid transition: ',
               as.character(reqState), ', ', x[reqIndex, name])
     for(req in requests){
+      offset = 0
       progress = reqProgress(req, offset) * 100
-      progress = sprintf('%03.1f%%\n', progress)
+      progress = sprintf('\r%03.1f%%', progress)
       cat(progress)
       sourced = F
       lastSource = NA ## index, not uid
@@ -421,8 +421,8 @@ readAll = function(path='.'){
             break
           }
         }
+        offset = offset + 1
       }
-      offset = offset + 1
     }
     cat('\r100.0%\n')
     ##! these are indices, but need to be uids
