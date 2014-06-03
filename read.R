@@ -195,6 +195,7 @@ readRuntime = function(filename, maxRank, path='.'){
   
   splitReqs = strsplit(a$reqs,',')
   uniqueReqs = Filter(Negate(is.na), unique(unlist(splitReqs)))
+  uniqueReqs = setdiff(uniqueReqs, MPI_REQUEST_NULL)
   uidsByReq =
     nnapply(uniqueReqs, function(req){
       sel = grep(paste(req, '(,|$)', sep=''), a$reqs)
@@ -353,9 +354,12 @@ readAll = function(path='.'){
 ###!merged afterward
     offset = 1
     cat('Tracking request states:\n')
+    reqWarning = function()
+      warning('uid ', x[reqIndex, uid], ': invalid transition: ',
+              as.character(reqState), ', ', x[reqIndex, name])
     for(req in requests){
       progress = reqProgress(req, offset) * 100
-      progress = sprintf('\r%03.1f%%', progress)
+      progress = sprintf('%03.1f%%\n', progress)
       cat(progress)
       sourced = F
       lastSource = NA ## index, not uid
@@ -371,7 +375,7 @@ readAll = function(path='.'){
             lastSource = reqIndex
             reqState = factor('active', levels=reqStates)
           } else {
-            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            reqWarning()
             break
           }
         } else if(reqState == 'init'){
@@ -384,7 +388,7 @@ readAll = function(path='.'){
           } else if(x[reqIndex, name] %in% MPI_Req_frees){
             reqState = factor('inactive')
           } else {
-            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            reqWarning()
             break
           }
         } else if(reqState == 'active'){
@@ -397,7 +401,7 @@ readAll = function(path='.'){
           } else if(x[reqIndex, name] %in% MPI_Req_frees){
             reqState = factor('inactive', levels=reqStates)
           } else {
-            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            reqWarning()
             break
           }
         } else if(reqState == 'null'){
@@ -405,14 +409,15 @@ readAll = function(path='.'){
             lastSource = reqIndex
             reqState = factor('active', levels=reqStates)
             brefs[[reqIndex]] = union(brefs[[reqIndex]], lastInit)
-            frefs[[lastInit]] = union(frefs[[lastInit]], reqIndex)
+            if(x[reqIndex, name] %in% MPI_Req_starts)
+              frefs[[lastInit]] = union(frefs[[lastInit]], reqIndex)
           } else if(x[reqIndex, name] %in% MPI_Req_frees){
             reqState = factor('inactive')
           } else if(x[reqIndex, name] %in% MPI_Req_inits){
             lastInit = reqIndex
             reqState = factor('init')
           } else {
-            warning('uid ', x[reqIndex, uid], ': invalid transition')
+            reqWarning()
             break
           }
         }
