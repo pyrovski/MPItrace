@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 ##!@todo group by contents of command file
-options(mc.cores=16)
+#options(mc.cores=16)
 
 source('~/local/bin/pbutils.R')
 source('./read.R')
@@ -309,6 +309,7 @@ go = function(){
     cat('Done merging configurations\n')
     cat('Reducing configurations\n')
     reduced <- reduceConfs(merged)
+    reduced$key <- entry$key
     cat('Done reducing configurations\n')
     cat('Writing timeslices\n')
     writeSlice(reduced)
