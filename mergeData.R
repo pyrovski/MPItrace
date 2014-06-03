@@ -9,7 +9,7 @@ source('./util.R')
 
 require('data.table')
 
-g = function(entry){
+getEntryData = function(entry){
   filename = file.path(entry$path, 'merged.Rsave')
   ## Does merged data exist?  If not, merge it.
   if(-1 == file.access(filename)){
@@ -33,9 +33,9 @@ g = function(entry){
   return(result)
 }
 
-mergeConfs = function(conf){
+mergeConfs = function(conf, entries){
   print(conf)
-  result = rowApply(entries[conf], g)
+  result = rowApply(entries[conf], getEntryData)
   
   dates = sapply(result, '[[', 'date')
 
@@ -119,16 +119,22 @@ reduceConfs = function(x){
   cat('Reducing between configs\n')
   if(T){
     nonMeasurementCols = setdiff(names(x$runtimes), measurementCols)
-    x$reduced =
-      x$runtimes[,lapply(.SD[,measurementCols,
-                             with=F], mean),
-                 by=by]
+    n_time = system.time(
+      x$reduced <-
+      x$runtimes[,c(measurementCols, by), with=F][,
+                                            lapply(.SD[,measurementCols,
+                                                       with=F], mean),
+                                            by=by]
+      )
+    cat('reduce time: ', n_time[3], '\n')
     x$runtimes = x$runtimes[,nonMeasurementCols,with=F]
     setkeyv(x$reduced, by)
     setkeyv(x$runtimes, by)
     x$reduced = x$runtimes[x$reduced,,mult='first']
-    x$reduced =
-      reduceNoEffect(x$reduced, measurementCols, nonMeasurementCols, by)
+    n_time = system.time(
+      x$reduced <-
+      reduceNoEffect(x$reduced, measurementCols, nonMeasurementCols, by))
+    cat('reduceNoEffect time: ', n_time[3], '\n')
   } else {
     ## this is slower by 3x.
     nonMeasurementCols = setdiff(names(x$runtimes), c(by, measurementCols))
@@ -275,6 +281,9 @@ go = function(){
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
 
+  ##!
+  entries = entries[ranks==8]
+
   entrySpace <<- unique(entries[,entryCols,with=F])
   setkey(entrySpace)
   setkeyv(entries, entryCols)
@@ -293,21 +302,26 @@ go = function(){
   entrySpace$key <<- rowApply(entrySpace, toKey)
   setkeyv(entrySpace, entryCols)
 
-  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
+  countedEntryspace <<-
+    entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
   measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
 
-  cat('Merging configurations\n')
-  merged <<- mcrowApply(entrySpace, mergeConfs)
-  names(merged) <<- entrySpace$key
-  lapply(names(merged), function(name) merged[[name]]$key<<-name)
-  cat('Done merging configurations\n')
-  cat('Reducing configurations\n')
-  reduced <<- mclapply(merged, reduceConfs)
-  cat('Done reducing configurations\n')
-  cat('Writing timeslices\n')
-  lapply(reduced, writeSlice)
-  cat('Done writing timeslices\n')
-  save(measurementCols, reduced, merged, entrySpace, countedEntryspace,
+  f = function(entry){
+    cat('Merging configurations\n')
+    merged <- mergeConfs(entry, entries)
+    cat('Done merging configurations\n')
+    cat('Reducing configurations\n')
+    reduced <- reduceConfs(merged)
+    cat('Done reducing configurations\n')
+    cat('Writing timeslices\n')
+    writeSlice(reduced)
+    cat('Done writing timeslices\n')
+    return(list(merged=merged, reduced=reduced))
+  }
+  result = mcrowApply(entrySpace, f)
+  
+  
+  save(measurementCols, result, entrySpace, countedEntryspace,
        entryCols, entries, confSpace, confCols,
        file='mergedData.Rsave')
 }
