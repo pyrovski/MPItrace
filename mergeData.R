@@ -28,7 +28,7 @@ getEntryData = function(entry){
   for(col in confCols){
     result$runtimes[[col]] = entry[[col]]
     result$compEdges[[col]] = entry[[col]]
-    if(!is.na(result$messageEdges))
+    if(!any(is.na(result$messageEdges)))
       result$messageEdges[[col]] = entry[[col]]
   }
   return(result)

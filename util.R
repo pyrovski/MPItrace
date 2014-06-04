@@ -165,8 +165,12 @@ slackEdges = function(edges, critPath){
     } else
        row
   }
-  nonCritEdges = rbindlist(rowApply(nonCritEdges, f))
-  rbind(critEdges, nonCritEdges)
+  if(nrow(nonCritEdges)){
+    nonCritEdges = rbindlist(rowApply(nonCritEdges, f))
+    result = rbind(critEdges, nonCritEdges)
+  } else
+    result = critEdges
+  return(result)
 }
 
 ##!@todo there has to be a better way to do this
