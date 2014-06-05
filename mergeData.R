@@ -333,5 +333,23 @@ go = function(){
        file='mergedData.Rsave')
 }
 
+f = function(){
+  a <<-
+    result[[1]]$reduced$reduced[is.na(name) & duration > .02,
+                                list(hash, OMP_NUM_THREADS, cpuFreq, duration,
+                                     pkg_w, pp0_w)][,lapply(.SD, mean),
+                                                    by=list(hash, OMP_NUM_THREADS, cpuFreq)][
+                                                      order(hash, OMP_NUM_THREADS, cpuFreq)]
+  b <<- a[hash==unique(hash)[2]]
+  m <<- nnapply(unique(b$cpuFreq),
+    function(f){
+      b = b[cpuFreq==f,list(OMP_NUM_THREADS, pkg_w,pp0_w)]
+      pkg_m = lm(pkg_w ~ OMP_NUM_THREADS, data=b)
+      pp0_m = lm(pp0_w ~ OMP_NUM_THREADS, data=b)
+      list(pkg=pkg_m,pp0=pp0_m)
+    })
+}
+
 if(!interactive())
   go()
+
