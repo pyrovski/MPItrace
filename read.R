@@ -426,16 +426,19 @@ readAll = function(path='.'){
     }
     cat('\r100.0%\n')
     ##! these are indices, but need to be uids
-    sel = which(!sapply(brefs, is.null))
+    sel = !sapply(brefs, is.null)
     ## x key must be uid
     brefs[sel] = lapply(brefs[sel], function(b) x[b, uid])
+    brefs[!sel] = as.numeric(NA)
     x$bref = brefs
 
-    sel = which(!sapply(frefs, is.null))
+    sel = !sapply(frefs, is.null)
     frefs[sel] = lapply(frefs[sel], function(b) x[b, uid])
+    frefs[!sel] = as.numeric(NA)
     x$fref = frefs
     rm(brefs, frefs)
-  }
+  } ## if(length(requests))
+
   if(!debug)
     x[,reqs:=NULL]
 
@@ -640,13 +643,41 @@ messageDeps = function(x){
   setkey(x, src, dest, size, tag, comm)
   canceledUIDs = x[name == 'MPI_Cancel', uid]
   
+  f_noSideEffects = function(s, r){
+    ## handle Irecvs by forwarding to corresponding MPI_Wait()s
+    if(!is.na(r$fref)){
+      dest = unlist(r$fref) ## uid
+      o_dest = r$uid ## uid
+      dest_vertex = as.numeric(NA)
+    } else {
+      dest = r$uid ## uid
+      o_dest = dest ## uid
+      dest_vertex = r$vertex
+    }
+    src = s$uid ## uid
+    o_src = src ## uid
+    tryCatch(
+      result <-
+      data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
+                 size=s$size,
+                 src_vertex=s$vertex, dest_vertex=dest_vertex,
+                 src_rank=s$rank, dest_rank=r$rank),
+      error = function(e) {
+        print(s)
+        print(r)
+        stop('error in f_noSideEffects: ')
+      }
+      )
+    return(result)
+  }
+
   f = function(mid){
     matching = x[mids[mid]]
 
     ## ignore canceled requests
     matching = matching[is.na(fref) | !fref %in% canceledUIDs]
     ## ignore requests not waited for
-    matching = matching[!name %in% MPI_Req_sources | !is.na(fref)]
+    matching = matching[!name %in% c(MPI_Req_sources, MPI_Req_inits) | !is.na(fref)]
     if(nrow(matching) < 1){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
@@ -694,25 +725,6 @@ messageDeps = function(x){
       stop(errMsg)
     }
 
-    f_noSideEffects = function(s, r){
-      ## handle Irecvs by forwarding to corresponding MPI_Wait()s
-      if(!is.na(r$fref)){
-        dest = unlist(r$fref) ## uid
-        o_dest = r$uid ## uid
-        dest_vertex = as.numeric(NA)
-      } else {
-        dest = r$uid ## uid
-        o_dest = dest ## uid
-        dest_vertex = r$vertex
-      }
-      src = s$uid ## uid
-      o_src = src ## uid
-      return(data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
-                        size=s$size,
-                        src_vertex=s$vertex, dest_vertex=dest_vertex,
-                        src_rank=s$rank, dest_rank=r$rank))
-    }
-
     result =
       lapply(1:nrow(sends), function(row)
              f_noSideEffects(sends[row], recvs[row]))
@@ -722,6 +734,7 @@ messageDeps = function(x){
 
   ## srDeps holds source and destination UIDs for matching messages
   srDeps = mclapply(1:nrow(mids), f)
+  srDeps = srDeps[sapply(srDeps, nrow) > 0]
   ## this is slower than rbindlist, but doesn't segfault. rbindlist
   ## makes shitty data tables?
   srDeps = do.call(rbind, srDeps)
