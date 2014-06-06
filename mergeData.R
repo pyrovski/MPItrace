@@ -231,6 +231,7 @@ reduceConfs = function(x){
 }
 
 writeSlice = function(x){
+  options(scipen=7)
   x$edges = timeslice(x$schedule, x$edges)[[1]]
   
   firstCols = c('e_uid', confCols)
@@ -265,6 +266,12 @@ writeSlice = function(x){
               row.names=F, quote=F, sep=',')
   write.table(x$edges[,c(firstCols, 'weight', 'power'),with=F],
               file=paste(confName, '.edge_weights.csv', sep=''),
+              row.names=F, quote=F, sep=',')
+  write.table(x$edges[, list(minPower=min(power), maxPower=max(power)), by=e_uid],
+              file=paste(confName, '.edge_powerRange.csv', sep=''),
+              row.names=F, quote=F, sep=',')
+  write.table(x$edges[, list(minTime=min(weight), maxTime=max(weight)), by=e_uid],
+              file=paste(confName, '.edge_timeRange.csv', sep=''),
               row.names=F, quote=F, sep=',')
 
   ## ##!I only need a single rank column. Slack edges always go on the
