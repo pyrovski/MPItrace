@@ -114,20 +114,29 @@ mergeConfs = function(conf, entries){
 ## combine within confCols combinations. This will combine multiple
 ## runs with the same configuration.
 reduceConfs = function(x){
+  startTime = Sys.time()
+
   x$runtimes$date = NULL
   x$runtimes$start = NULL
   by = c('uid',confCols)
   cat('Reducing between configs\n')
   if(T){
     nonMeasurementCols = setdiff(names(x$runtimes), measurementCols)
-    n_time = system.time(
-      x$reduced <-
-      x$runtimes[,c(measurementCols, by), with=F][,
-                                            lapply(.SD[,measurementCols,
-                                                       with=F], mean),
-                                            by=by]
-      )
-    cat('reduce time: ', n_time[3], '\n')
+    ##!@todo parallelize by uid ranges
+    f = function(x)
+      x[,c(measurementCols, by), with=F][,
+                                   lapply(.SD[,measurementCols,
+                                              with=F], mean),
+                                   by=by]
+    if(getOption('mc.cores') > 1){
+      setkey(x$runtimes, uid)
+      uids = unique(x$runtimes[, uid])
+      uid_sets = chunk(uids, length(uids)/getOption('mc.cores'))
+      x$reduced =
+        rbindlist(mclapply(uid_sets, function(s) f(x$runtimes[J(s)]),
+                           mc.allow.recursive = T))
+    } else
+    x$reduced = f(x$runtimes)
     x$runtimes = x$runtimes[,nonMeasurementCols,with=F]
     setkeyv(x$reduced, by)
     setkeyv(x$runtimes, by)
@@ -147,7 +156,8 @@ reduceConfs = function(x){
                  by=by]
   }
   x$runtimes = NULL
- 
+  cat('Reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+
   cat('Message edges\n')
   ## all message edges should be identical between runs
   if(any(sapply(x$messageEdges, is.na))){
