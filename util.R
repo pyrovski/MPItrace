@@ -101,6 +101,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   ts_order = topological.sort(g)
+  if(no.clusters(g) > 1)
+    stop('Graph has more than one cluster!', immediate. = T)
   rm(g)
   
   setkey(vertices)
@@ -114,12 +116,18 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   edges[J(vertices$vertex[1]), start:=max(0, start)]
   for(vertex in vertices$vertex){
     outEdges = edges[J(vertex)]
+    ##!@todo this doesn't need to be a loop
     for(row in 1:nrow(outEdges)){
       startTime = outEdges[row, start + weight]
       edges[J(outEdges[row]$dest), start:=max(startTime, start)]
     }
   }
+  if(any(edges$start == -Inf))
+    warning('Some edges not assigned a start time!\n', immediate. = T)
+
+  ##!@todo does this remove edges?
   edges = edges[J(vertices)]
+  
   setkey(edges, start, weight)
   if(!'e_uid' %in% names(edges))
     edges$e_uid = 1:nrow(edges)
@@ -137,6 +145,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   } else
     critPath=NULL
 
+  ##!@todo edges$start is not completed at the end of mergeData::go()
+  
   return(list(edges=edges, vertices=vertices, critPath=critPath))
 }
 
@@ -158,12 +168,9 @@ slackEdges = function(edges, critPath){
   f = function(row){
     slack = data.table::copy(row)
     row[, c('dest', 'd_uid') := list(-e_uid, NA)]
-    if(identical(row[,confCols,with=F], slackConfig)){
-      slack[, c('e_uid', 'src', 's_uid', 'weight', 'power') :=
-            list(-e_uid, -e_uid, NA, NA, slackPower)]
-      rbind(row, slack)
-    } else
-       row
+    slack[, c('e_uid', 'src', 's_uid', 'weight', 'power') :=
+          list(-e_uid, -e_uid, NA, NA, slackPower)]
+    rbind(row, slack)
   }
   if(nrow(nonCritEdges)){
     nonCritEdges = rbindlist(rowApply(nonCritEdges, f))
@@ -204,5 +211,10 @@ pareto = function(edges){
           frontier[count <- count + 1] = row
     uid_edges[frontier]
   }
-  edges[, f(.SD), by=e_uid]
+  ## e_uid is not rank-specific
+  edges[, f(.SD), by=list(e_uid, rank)]
+}
+
+chunk = function(d, n){
+  split(d, ceiling(seq_along(d)/n))
 }
