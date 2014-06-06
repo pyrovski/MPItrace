@@ -170,7 +170,11 @@ reduceConfs = function(x){
     x$messageEdges[, type:='message']
     setkey(x$reduced, uid)
     ## message edges can convert to slack edges, so we need the destination rank
-    x$messageEdges[, rank:=x$reduced[J(x$messageEdges[,d_uid,by=d_uid]), rank]]
+    rankTable = x$reduced[, list(rank=head(rank,1)), by=uid]
+    setkey(rankTable, uid)
+    setkey(x$messageEdges, d_uid)
+    x$messageEdges = x$messageEdges[rankTable]
+    rm(rankTable)
     x$messageEdges =
       reduceNoEffect(x$messageEdges, c('weight'),
                      setdiff(names(x$messageEdges),
@@ -184,7 +188,8 @@ reduceConfs = function(x){
   x$compEdges[, type:='comp']
   rankTable = x$reduced[, list(rank=head(rank,1)), by=uid]
   setkey(rankTable, uid)
-  x$compEdges[, rank:=rankTable[J(x$compEdges[,d_uid,by=d_uid]), rank]]
+  setkey(x$compEdges, d_uid)
+  x$compEdges = x$compEdges[rankTable]
   rm(rankTable)
   x$compEdges =
     reduceNoEffect(x$compEdges, c('weight','power'),
