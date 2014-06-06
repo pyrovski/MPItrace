@@ -172,8 +172,10 @@ reduceConfs = function(x){
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   x$compEdges[, type:='comp']
-  setkey(x$reduced, uid)
-  x$compEdges[, rank:=x$reduced[J(x$compEdges[,d_uid,by=d_uid]), rank]]
+  rankTable = x$reduced[, list(rank=head(rank,1)), by=uid]
+  setkey(rankTable, uid)
+  x$compEdges[, rank:=rankTable[J(x$compEdges[,d_uid,by=d_uid]), rank]]
+  rm(rankTable)
   x$compEdges =
     reduceNoEffect(x$compEdges, c('weight','power'),
                    setdiff(names(x$compEdges),
