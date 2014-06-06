@@ -349,6 +349,7 @@ go = function(){
     cat('Done writing timeslices\n')
     return(list(merged=merged, reduced=reduced))
   }
+  ##!@todo launch these as separate jobs
   result <<- mcrowApply(entrySpace, f)
   names(result) <<- entrySpace$key
   
