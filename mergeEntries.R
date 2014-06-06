@@ -2,6 +2,15 @@
 
 require('data.table')
 
+if(!exists('f_args') && !interactive()){
+  f_args = commandArgs(trailingOnly=T)
+  allArgs = commandArgs(trailingOnly=F)
+  if(length(f_args) < 2){
+    cat(paste("usage:", allArgs[1], "<input file list> <output R file>\n"))
+    quit()
+  }
+}
+
 readEntry = function(filename){
   e = new.env()
   source(filename, local=e)
@@ -20,45 +29,40 @@ readEntry = function(filename){
   })
 }
 
-if(!exists('f_args')){
-  f_args = commandArgs(trailingOnly=T)
-  allArgs = commandArgs(trailingOnly=F)
-  if(length(f_args) < 2){
-    cat(paste("usage:", allArgs[1], "<input file list> <output R file>"))
-    quit()
-  }
+mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
+  
+  entries = lapply(inList, readEntry)
+  classes = unique(rbindlist(lapply(entries,
+    function(entry)
+    as.data.frame(cbind(name = names(entry),
+                        class = sapply(entry, class)),
+                  stringsAsFactors=F))))
+  setkey(classes)
+  entries = rbindlist(lapply(entries, function(entry){
+    missing = setdiff(classes$name, names(entry))
+    for(col in missing)
+      ##    entry[[col]] = as(NA, classes[J(col)]$class)
+      entry[[col]] = NA
+    entry = as.data.table(entry)
+    setcolorder(entry, classes$name)
+    entry
+  }))
+  
+  entries[, ranksPerNode:=ceiling(ranks/SLURM_NNODES)]
+  entries[, SLURM_NNODES:=NULL]
+  
+  entryCols =
+    intersect(c('ranksPerNode','ranks','command'),
+              names(entries))
+  confCols =
+    intersect(
+      c('OMP_NUM_THREADS', ## number of OpenMP threads
+        'cpuFreq'          ## static CPU frequency in kHz
+        ),
+      names(entries))
+
+  save(file=outFile, entries, entryCols, confCols)
 }
 
-inList = readLines(f_args[1])
-
-entries = lapply(inList, readEntry)
-classes = unique(rbindlist(lapply(entries,
-  function(entry)
-  as.data.frame(cbind(name = names(entry),
-                      class = sapply(entry, class)),
-                stringsAsFactors=F))))
-setkey(classes)
-entries = rbindlist(lapply(entries, function(entry){
-  missing = setdiff(classes$name, names(entry))
-  for(col in missing)
-##    entry[[col]] = as(NA, classes[J(col)]$class)
-    entry[[col]] = NA
-  entry = as.data.table(entry)
-  setcolorder(entry, classes$name)
-  entry
-}))
-
-entries[, ranksPerNode:=ceiling(ranks/SLURM_NNODES)]
-entries[, SLURM_NNODES:=NULL]
-
-entryCols =
-  intersect(c('ranksPerNode','ranks','command'),
-            names(entries))
-confCols =
-  intersect(
-    c('OMP_NUM_THREADS', ## number of OpenMP threads
-      'cpuFreq'          ## static CPU frequency in kHz
-      ),
-    names(entries))
-
-save(file=f_args[2], entries, entryCols, confCols)
+if(!interactive())
+  mergeEntries()
