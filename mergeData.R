@@ -347,7 +347,7 @@ go = function(){
     cat('Writing timeslices\n')
     writeSlice(reduced)
     cat('Done writing timeslices\n')
-    return(list(merged=merged, reduced=reduced))
+    return(reduced)
   }
   ##!@todo launch these as separate jobs
   result <<- mcrowApply(entrySpace, f)
@@ -360,7 +360,7 @@ go = function(){
 
 f = function(){
   a <<-
-    result[[1]]$reduced$reduced[is.na(name) & duration > .02,
+    result[[1]]$reduced[is.na(name) & duration > .02,
                                 list(hash, OMP_NUM_THREADS, cpuFreq, duration,
                                      pkg_w, pp0_w)][,lapply(.SD, mean),
                                                     by=list(hash, OMP_NUM_THREADS, cpuFreq)][
