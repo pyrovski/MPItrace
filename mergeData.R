@@ -288,6 +288,9 @@ writeSlice = function(x){
   write.table(x$edges[, list(minTime=min(weight), maxTime=max(weight)), by=e_uid],
               file=paste(confName, '.edge_timeRange.csv', sep=''),
               row.names=F, quote=F, sep=',')
+  write.table(x$edges[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
+              file=paste(confName, '.edge_multiConf.csv', sep=''),
+              row.names=F, quote=F, sep=',')
 
   ## ##!I only need a single rank column. Slack edges always go on the
   ## ##!destination rank, and we don't care about messages. Only the
