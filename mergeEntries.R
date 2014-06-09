@@ -1,6 +1,8 @@
 #!/usr/bin/env Rscript
 
+source('~/local/bin/pbutils.R')
 require('data.table')
+require('parallel')
 
 if(!exists('f_args') && !interactive()){
   f_args = commandArgs(trailingOnly=T)
@@ -31,14 +33,14 @@ readEntry = function(filename){
 
 mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
   
-  entries = lapply(inList, readEntry)
-  classes = unique(rbindlist(lapply(entries,
+  entries <<- lapply(inList, readEntry)
+  classes <<- unique(rbindlist(lapply(entries,
     function(entry)
     as.data.frame(cbind(name = names(entry),
                         class = sapply(entry, class)),
                   stringsAsFactors=F))))
   setkey(classes)
-  entries = rbindlist(lapply(entries, function(entry){
+  entries <<- rbindlist(mclapply(entries, function(entry){
     missing = setdiff(classes$name, names(entry))
     for(col in missing)
       ##    entry[[col]] = as(NA, classes[J(col)]$class)
@@ -61,7 +63,29 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
         ),
       names(entries))
 
-  save(file=outFile, entries, entryCols, confCols)
+  entrySpace <<- unique(entries[,entryCols,with=F])
+
+  setkey(entrySpace)
+  setkeyv(entries, entryCols)
+
+  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
+                                by=entryCols]
+
+  sel = which(!complete.cases(entrySpace))
+  if(length(sel)){
+    cat('Removing', length(sel), 'cases:\n')
+    print(countedEntryspace[sel])
+  }
+  entrySpace <<- na.omit(entrySpace)
+
+  entrySpace$key <<- rowApply(entrySpace, toKey)
+  setkeyv(entrySpace, entryCols)
+
+  countedEntryspace <<-
+    entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
+
+  save(file=outFile, entries, entryCols, confCols, entrySpace,
+       countedEntryspace)
 }
 
 if(!interactive())

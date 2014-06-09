@@ -317,27 +317,9 @@ go = function(){
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
 
-  entrySpace <<- unique(entries[,entryCols,with=F])
-  setkey(entrySpace)
-  setkeyv(entries, entryCols)
 
-  confSpace <<- unique(entries[,confCols,with=F])
-  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
-                                by=entryCols]
-
-  sel = which(!complete.cases(entrySpace))
-  if(length(sel)){
-    cat('Removing', length(sel), 'cases:\n')
-    print(countedEntryspace[sel])
-  }
-  entrySpace <<- na.omit(entrySpace)
-
-  entrySpace$key <<- rowApply(entrySpace, toKey)
-  setkeyv(entrySpace, entryCols)
-
-  countedEntryspace <<-
-    entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
   measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
+  confSpace <<- unique(entries[,confCols,with=F])
 
   f = function(entry){
     cat('Merging configurations\n')
@@ -352,6 +334,7 @@ go = function(){
     cat('Done writing timeslices\n')
     return(reduced)
   }
+  setkeyv(entries, entryCols)
   ##!@todo launch these as separate jobs
   result <<- mcrowApply(entrySpace, f)
   names(result) <<- entrySpace$key
