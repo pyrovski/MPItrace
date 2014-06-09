@@ -233,7 +233,7 @@ readAll = function(path='.'){
 
 ## Writing replays is important because the resulting traces will have
 ## resolved MPI_ANY_TAG and MPI_ANY_SOURCE.
-.deps = function(x, rank, uidsByReq, writeReplay=T, path='.'){
+.deps = function(x, rank, uidsByReq, writeReplay=F, path='.'){
   ranks = unique(x$rank)
   if(length(ranks) > 1)
     stop('Too many ranks in .deps()!')
