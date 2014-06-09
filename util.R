@@ -151,29 +151,27 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
 }
 
 slackEdges = function(edges, critPath){
-  ##!@todo record active wait power in shim library, export to
-  ##!glog.dat, and use for slack edges. For now, we use the minimum
-  ##!power recorded in any run as active wait power
-  slackConfig = minConf(edges[,c(confCols,'power'), with=F])
-  slackPower = slackConfig[,power]
-  slackConfig = slackConfig[,confCols, with=F]
+###!For now, we use the minimum power recorded in any run as active
+###!wait power
 
   setkey(edges, e_uid)
   ##  cols = setdiff(names(edges), confCols)
-  nonCritEdges = edges[!J(critPath)]
+  ##nonCritEdges = edges[!J(critPath)]
+  nonCritEdge_UIDs = setdiff(unique(edges[, e_uid]), critPath)
   critEdges = edges[J(critPath)]
 
   ## for LP purposes, 0 is equivalent to NA for power. Weight must be
   ## treated differently.
-  f = function(row){
-    slack = data.table::copy(row)
-    row[, c('dest', 'd_uid') := list(-e_uid, NA)]
-    slack[, c('e_uid', 'src', 's_uid', 'weight', 'power') :=
-          list(-e_uid, -e_uid, NA, NA, slackPower)]
-    rbind(row, slack)
+  f = function(u){
+    confs = edges[J(u)]
+    slack = confs[which.min(power)]
+    confs[, c('dest', 'd_uid') := list(-e_uid, NA)]
+    slack[, c('e_uid', 'src', 's_uid', 'weight') :=
+          list(-e_uid, -e_uid, NA, NA)]
+    rbind(confs, slack)
   }
-  if(nrow(nonCritEdges)){
-    nonCritEdges = rbindlist(rowApply(nonCritEdges, f))
+  if(length(nonCritEdge_UIDs)){
+    nonCritEdges = rbindlist(mclapply(nonCritEdge_UIDs, f))
     result = rbind(critEdges, nonCritEdges)
   } else
     result = critEdges
