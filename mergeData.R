@@ -322,26 +322,36 @@ go = function(){
   confSpace <<- unique(entries[,confCols,with=F])
 
   f = function(entry){
+    filename = paste('mergedData', entry$key, 'Rsave', sep='.')
+    if(file.exists(filename)){
+      cat(entry$key, 'already merged\n')
+      return
+    }
     cat('Merging configurations\n')
     merged <- mergeConfs(entry, entries)
     cat('Done merging configurations\n')
     cat('Reducing configurations\n')
     reduced <- reduceConfs(merged)
+    rm(merged)
     reduced$key <- entry$key
     cat('Done reducing configurations\n')
     cat('Writing timeslices\n')
     writeSlice(reduced)
     cat('Done writing timeslices\n')
-    return(reduced)
+    cat('Saving\n')
+    save(measurementCols, reduced, entrySpace, countedEntryspace,
+         entryCols, entries, confSpace, confCols,
+         entry,
+         file=filename)
+    cat('Done saving\n')
+    ##return(reduced)
   }
   setkeyv(entries, entryCols)
   ##!@todo launch these as separate jobs
-  result <<- mcrowApply(entrySpace, f)
-  names(result) <<- entrySpace$key
+  ##result <<-
+  mcrowApply(entrySpace, f)
+  ##names(result) <<- entrySpace$key
   
-  save(measurementCols, result, entrySpace, countedEntryspace,
-       entryCols, entries, confSpace, confCols,
-       file='mergedData.Rsave')
 }
 
 f = function(){
