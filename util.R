@@ -91,6 +91,7 @@ minConf = function(confs){
 ## orders vertices and edges in topological order, adds a start time
 ## and e_uid to each edge, and returns the critical path.
 getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doCritPath=T){
+  cat('Graph construction\n')
   edges = data.table::copy(edges)
   setcolorder(edges,
               c('src','dest',setdiff(names(edges), c('src','dest'))))
@@ -100,6 +101,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   g = graph.data.frame(edges)
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
+  cat('Topological ordering\n')
   ts_order = topological.sort(g)
   if(no.clusters(g) > 1)
     stop('Graph has more than one cluster!', immediate. = T)
@@ -113,15 +115,23 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   setkey(edges, src)
 
   ## define a start time for each edge
+  cat('Start times\n')
   edges[J(vertices$vertex[1]), start:=max(0, start)]
+  count = 0
+  progress = 0
   for(vertex in vertices$vertex){
     outEdges = edges[J(vertex)]
-    ##!@todo this doesn't need to be a loop
-    for(row in 1:nrow(outEdges)){
-      startTime = outEdges[row, start + weight]
-      edges[J(outEdges[row]$dest), start:=max(startTime, start)]
+    startTimes = outEdges[, list(start_u=max(start+weight)), keyby=dest]
+    edges[startTimes, start := pmax(start, start_u)]
+    if(!count %% 1000){
+      n_progress = round(count/nrow(vertices)*100)
+      if(progress != n_progress)
+        cat(n_progress, '%\n')
+      progress = n_progress
     }
+    count = count + 1
   }
+  cat(100, '%\n')
   if(any(edges$start == -Inf))
     warning('Some edges not assigned a start time!\n', immediate. = T)
 
@@ -133,6 +143,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
     edges$e_uid = 1:nrow(edges)
 
   if(doCritPath){
+    cat('Critical path\n')
     ## critical path; rebuild graph with e_uid field
     edges[, oldWeight := weight]
     edges[, weight := max(weight) - weight]
@@ -141,12 +152,11 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
                          output='epath')$epath[[1]]
     edges[, weight := oldWeight]
     edges[, oldWeight := NULL]
+### get.shortest.paths returns indices, not edge names; no join necessary.
     critPath = edges[critPath, e_uid]
   } else
     critPath=NULL
 
-  ##!@todo edges$start is not completed at the end of mergeData::go()
-  
   return(list(edges=edges, vertices=vertices, critPath=critPath))
 }
 
