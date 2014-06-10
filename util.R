@@ -5,7 +5,7 @@ powerTime = function(x){
   powerSteps =
     lapply(ranks, function(r){
       x = x[rank == r][order(uid), cols, with=F]
-      x = x[,list(start, power=pkg_w+dram_w+pp0_w)]
+      x = x[,list(start, power=pkg_w+dram_w)] ## pp0_w is included in pkg_w
       list(times = x$start, steps = stepfun(x$start, c(x$power,tail(x$power,1))))
     })
   times = sort(unique(unlist(lapply(powerSteps, '[[', 'times'))))
@@ -91,6 +91,11 @@ minConf = function(confs){
 ## orders vertices and edges in topological order, adds a start time
 ## and e_uid to each edge, and returns the critical path.
 getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doCritPath=T){
+### this function is intended to be called with one edge row per e_uid
+  if(any(edges[, list(count=nrow(.SD)), by=e_uid]$count > 1)){
+    stop('Duplicate e_uids in getSchedule\n')
+  }
+  
   cat('Graph construction\n')
   edges = data.table::copy(edges)
   setcolorder(edges,
@@ -108,21 +113,43 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   rm(g)
   
   setkey(vertices)
-  vertices = vertices[J(gd$vertices[ts_order])]
+  vertices_TO = data.table::copy(vertices[J(gd$vertices[ts_order])])
   rm(gd)
 
-  edges$start = -Inf
   setkey(edges, src)
 
   ## define a start time for each edge
   cat('Start times\n')
-  edges[J(vertices$vertex[1]), start:=max(0, start)]
+  vertices$start = -Inf
+  vertices[J(1), start := 0]
+  vertices[, via:=as.numeric(NA)]
   count = 0
   progress = 0
-  for(vertex in vertices$vertex){
-    outEdges = edges[J(vertex)]
-    startTimes = outEdges[, list(start_u=max(start+weight)), keyby=dest]
-    edges[startTimes, start := pmax(start, start_u)]
+  f = function(via){
+    print(via)
+  }
+  debug(f)
+  for(vertex in vertices_TO$vertex){
+    outEdges = edges[J(vertex), list(src, dest, e_uid, s_uid, d_uid, type, weight)]
+    setkey(outEdges, src)
+
+    ## get start times for src vertices
+    v = vertices[outEdges]
+
+    ## get potential start times for dest vertices
+    v[, start_u:=start+weight]
+
+    ## resolve cases with multiple edges between src and dest
+    v = v[, .SD[which.max(start_u)], keyby=dest]
+    ## should now have one edge per dest in v (already have a single src)
+
+    ## update start times for dest vertices
+    v = vertices[v[, list(dest, start_u, e_uid)]]
+    vertices[J(v[start_u > start,
+                 list(start_u, e_uid),
+                 keyby=vertex]),
+             c('start', 'via') := list(start_u, e_uid)]
+    
     if(!count %% 1000){
       n_progress = round(count/nrow(vertices)*100)
       if(progress != n_progress)
@@ -136,24 +163,22 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
     warning('Some edges not assigned a start time!\n', immediate. = T)
 
   ##!@todo does this remove edges?
-  edges = edges[J(vertices)]
+  edges = edges[J(vertices[, list(vertex, start)])]
   
-  setkey(edges, start, weight)
-  if(!'e_uid' %in% names(edges))
-    edges$e_uid = 1:nrow(edges)
-
   if(doCritPath){
     cat('Critical path\n')
-    ## critical path; rebuild graph with e_uid field
-    edges[, oldWeight := weight]
-    edges[, weight := max(weight) - weight]
-    critPath =
-      get.shortest.paths(graph.data.frame(edges), from='1', to='2',
-                         output='epath')$epath[[1]]
-    edges[, weight := oldWeight]
-    edges[, oldWeight := NULL]
-### get.shortest.paths returns indices, not edge names; no join necessary.
-    critPath = edges[critPath, e_uid]
+
+###!igraph doesn't support finding the shortest path with negative
+###!edge weights.
+
+    setkey(edges, e_uid)
+    c_vertex = 2
+    critPath = c()
+    while(c_vertex != 1){
+      via = vertices[J(c_vertex), via]
+      c_vertex = edges[J(via), src, mult='first']
+      critPath = c(via, critPath)
+    }
   } else
     critPath=NULL
 

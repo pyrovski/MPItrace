@@ -169,8 +169,12 @@ reduceConfs = function(x){
   ## set power to zero for message edges
   x$edges[is.na(power), power:=0]
 
+  ## assign edge uids
+  if(!'e_uid' %in% names(x$edges))
+    x$edges[, e_uid := .GRP, by=list(s_uid, d_uid, type)]
+  
   ## Get an initial schedule, starting with minimum time per task.
-  x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
+  x$schedule = x$edges[,.SD[which.min(weight)],by=e_uid]
 
   cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule)
@@ -283,6 +287,7 @@ go = function(){
   confSpace <<- unique(entries[,confCols,with=F])
 
   f = function(entry){
+    startTime = Sys.time()
     filename = paste('mergedData', gsub('[/.]', '_', entry$key),
       'Rsave', sep='.')    
     if(file.exists(filename)){
@@ -292,11 +297,15 @@ go = function(){
     cat(entry$key, 'Merging configurations\n')
     merged <- mergeConfs(entry, entries)
     cat(entry$key, 'Done merging configurations\n')
+    cat(entry$key, 'merge time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    startTime = Sys.time()
     cat(entry$key, 'Reducing configurations\n')
     reduced <- reduceConfs(merged)
     rm(merged)
     reduced$key <- entry$key
     cat(entry$key, 'Done reducing configurations\n')
+    cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    startTime = Sys.time()
     cat(entry$key, 'Writing timeslices\n')
     writeSlice(reduced)
     cat(entry$key, 'Done writing timeslices\n')
@@ -306,6 +315,7 @@ go = function(){
          entry,
          file=filename)
     cat(entry$key, 'Done saving\n')
+    cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     ##return(reduced)
   }
   setkeyv(entries, entryCols)
