@@ -78,7 +78,7 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
   }
   entrySpace <<- na.omit(entrySpace)
 
-  entrySpace$key <<- rowApply(entrySpace, toKey)
+  entrySpace$key <<- unlist(rowApply(entrySpace, toKey))
   setkeyv(entrySpace, entryCols)
 
   countedEntryspace <<-
