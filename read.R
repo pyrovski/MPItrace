@@ -113,6 +113,7 @@ latency =
   list(merlot = function(size) 6.456e-6 + 2.478e-10 * size,
        cab = function(size){
 ###!@todo this difference could be due to a blocking threshold
+###!@todo vectorize
          if(size < 4000)
            1.608e-05
          else
@@ -794,12 +795,15 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   setkey(x, rank, uid)
   f = function(r){
     sel = x[rank == r & is.na(name), which=T]
-    cbind(x[sel, list(weight=duration,power=pkg_w+pp0_w+dram_w,s_uid=uid,flags)],
-          x[sel-1,list(src=vertex)],
-          x[sel+1,list(dest=vertex, d_uid=uid)])
+    result =
+      cbind(x[sel, list(weight=duration,
+                        power=pkg_w+pp0_w+dram_w,s_uid=uid,flags)],
+            x[sel-1,list(src=vertex)],
+            x[sel+1,list(dest=vertex, d_uid=uid)])
+    result[, rank:=r]
   }
   compEdges = rbindlist(mclapply(unique(x[, rank]), f))
-
+  
   ## delete computation rows
   x = x[!is.na(name)]
 
@@ -825,36 +829,35 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   ## assume all ranks run on a cluster with a single hostname prefix
   uhost = unique(sub('[[:digit:]]+', '', assignments$hostname))
   
-  ## compute message source and dest vertices with weight (latency)
-  f = function(row){
-    size = row$size
-    ##xs = x[J(row$src)]
-    ##xd = x[J(row$dest)]
-    src_vertex = row$src_vertex
-    dest_vertex = row$dest_vertex
-    src_host = assignments[J(row$src_rank), hostname]
-    dest_host = assignments[J(row$dest_rank), hostname]
-    
-    weight =
-      if(src_host == dest_host)
-        selfLatency[[uhost]](size)
-      else
-        latency[[uhost]](size)
-    data.frame(src=src_vertex,
-               dest=dest_vertex,
-               weight,
-               s_uid=row$o_src,
+### compute message source and dest vertices with weight (latency)
+
 ### o_dest and dest uids should be on the same rank anyway
-               d_uid=row$dest);
-  }
   
   if(debug)
     cat('Communication edges\n')
   ## add communication edges
   edges = compEdges[,list(src,dest,weight,s_uid,d_uid)]
   if(!is.null(messages) && nrow(messages)){
-    messageEdges = rbindlist(mcrowApply(messages, f))
-    edges = rbind(edges, messageEdges)
+    setkey(messages, src_rank)
+    messages$src_host = assignments[messages, hostname]
+
+    setkey(messages, dest_rank)
+    messages$dest_host = assignments[messages, hostname]
+
+    messages[src_host == dest_host,
+             weight := selfLatency[[uhost]](size), by=list(o_src, o_dest)]
+    messages[src_host != dest_host,
+             weight := latency[[uhost]](size), by=list(o_src, o_dest)]
+
+    messageEdges =
+      messages[, list(size, src=src_vertex, dest=dest_vertex,
+                      rank=dest_rank, s_uid=o_src, d_uid=dest, weight)]
+    rm(messages)
+    commonNames = intersect(names(edges), names(messageEdges))
+    messageOnlyNames = setdiff(names(messageEdges), commonNames)
+    for(name in messageOnlyNames)
+      edges[, name := as.numeric(NA), with=F]
+    edges = rbind(edges, messageEdges, use.names=T)
   } else
     messageEdges = NA
     
@@ -863,6 +866,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   if(debug)
     cat('Graph object\n')
   g = graph.data.frame(edges, vertices=vertices)
+  rm(edges)
   if(saveGraph){
     write.graph(g, file='graph.dot', format='dot')
     system('gzip graph.dot', wait=F)
@@ -983,30 +987,28 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
   messages = b2$messages
   b2 = b2$runtimes
   rm(b)
-  ##b2 = modelPower(b2, assignments)
-  ## the graph serves as input to the LP?
   ##if(!saveResult)
-  g =
-    tableToGraph(data.table::copy(b2), assignments=assignments,
-                 messages=messages)
+  g = tableToGraph(b2, assignments=assignments, messages=messages)
   ##else
   ##  g = NA
   cat('tableToGraph time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
-  tableToMarkov(data.table::copy(b2), path=path)
+  tableToMarkov(b2, path=path)
   cat('Markov time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   
   result =
-    list(runtimes = b2,
-         messageEdges = g$messageEdges,
-         compEdges = g$compEdges,
-         assignments = assignments,
-         comms = comms,
-         globals=globals)
+    list(
+      ##runtimes = b2,
+      messageEdges = g$messageEdges,
+      compEdges = g$compEdges,
+      assignments = assignments,
+      comms = comms,
+      globals=globals)
   if(saveResult){
     with(result, save(list=ls(), file=file.path(path,name)))
     cat('save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-  }
+  } else
+    result$graph = g$graph
   return(result)
 }

@@ -26,7 +26,6 @@ getEntryData = function(entry){
   result = as.list(e)
   result$date = entry$date
   for(col in confCols){
-    result$runtimes[[col]] = entry[[col]]
     result$compEdges[[col]] = entry[[col]]
     if(!any(is.na(result$messageEdges)))
       result$messageEdges[[col]] = entry[[col]]
@@ -37,6 +36,8 @@ getEntryData = function(entry){
 mergeConfs = function(conf, entries){
   print(conf)
   result = rowApply(entries[conf], getEntryData)
+
+  cat(conf$key, 'loaded data\n')
   
   dates = sapply(result, '[[', 'date')
 
@@ -47,8 +48,8 @@ mergeConfs = function(conf, entries){
 ### match.
 
   ## Sanity test
-  if(length(unique(sapply(result, function(r) nrow(r$runtimes)))) > 1){
-    errMsg = 'Runs differ in number of events!'
+  if(length(unique(sapply(result, function(r) nrow(r$compEdges)))) > 1){
+    errMsg = 'Runs differ in number of edges!'
     cat(errMsg, '\n')
     stop(errMsg)
   }
@@ -58,43 +59,48 @@ mergeConfs = function(conf, entries){
     r[[name]]
   }
   
-### Merge runtimes tables
-  runtimes = rbindlist(lapply(result, f, name='runtimes'))
-
   assignments = rbindlist(lapply(result, f, name='assignments'))
+  for(i in 1:length(result)) result[[i]]$assignments=NULL
+  gc()
 
   messageEdges = lapply(result, '[[', 'messageEdges')
   names(messageEdges) = lapply(result, '[[', 'date')
+  for(i in 1:length(result)) result[[i]]$messageEdges=NULL
+  gc()
+
   compEdges = lapply(result, '[[', 'compEdges')
   names(compEdges) = lapply(result, '[[', 'date')
+  for(i in 1:length(result)) result[[i]]$compEdges=NULL
+  gc()
 
   rm(result)
  
 ### Comms should already be unified; I mapped MPI_COMM_WORLD and
 ### MPI_COMM_NULL to -1 and -2, respectively. The other comms should
 ### align, but we need to test this.
-  setkey(runtimes, date, rank)
-  commSeqs = lapply(dates, function(d){
-    runtimes[J(d)][comm != '(nil)']$comm
-  })
-  if(length(unique(commSeqs)) != 1){
-    errMsg = "FIXME match comms between runs"
-    cat(errMsg, '\n')
-    stop(errMsg)
-  }
-    
-  fixDates = tail(dates, -1)
-  masterDate = head(dates, 1)
-  cat('Matching hashes between', length(dates), 'runs\n')
-  hashMaps = runtimes[date == masterDate, list(uid, rank, hash)]
-  setkey(hashMaps)
-  runtimes$hash = NULL
-  setkey(runtimes, uid, rank)
-  runtimes = runtimes[hashMaps]
-  cat('Done matching hashes\n')
 
-### Compute power consumption
-  
+###!@todo I disabled these because we don't have enough RAM to load
+###!the runtimes table for all runs in a sequence.
+  ## setkey(runtimes, date, rank)
+  ## commSeqs = lapply(dates, function(d){
+  ##   runtimes[J(d)][comm != '(nil)']$comm
+  ## })
+  ## if(length(unique(commSeqs)) != 1){
+  ##   errMsg = "FIXME match comms between runs"
+  ##   cat(errMsg, '\n')
+  ##   stop(errMsg)
+  ## }
+    
+  ## fixDates = tail(dates, -1)
+  ## masterDate = head(dates, 1)
+  ## cat('Matching hashes between', length(dates), 'runs\n')
+  ## hashMaps = runtimes[date == masterDate, list(uid, rank, hash)]
+  ## setkey(hashMaps)
+  ## runtimes$hash = NULL
+  ## setkey(runtimes, uid, rank)
+  ## runtimes = runtimes[hashMaps]
+  ## cat('Done matching hashes\n')
+ 
 ### Match requests between runs?
 
 ###!@todo match UIDs between runs
@@ -107,8 +113,10 @@ mergeConfs = function(conf, entries){
   ##   stop(conf$key, ' failed UID check')
   ## }
 
-  list(runtimes=runtimes, assignments=assignments,
-       messageEdges=messageEdges, compEdges=compEdges)
+  list(##runtimes=runtimes,
+       assignments=assignments,
+       messageEdges=messageEdges,
+       compEdges=compEdges)
 }
 
 ## combine within confCols combinations. This will combine multiple
@@ -116,47 +124,8 @@ mergeConfs = function(conf, entries){
 reduceConfs = function(x){
   startTime = Sys.time()
 
-  x$runtimes$date = NULL
-  x$runtimes$start = NULL
   by = c('uid',confCols)
   cat('Reducing between configs\n')
-  if(T){
-    nonMeasurementCols = setdiff(names(x$runtimes), measurementCols)
-    ##!@todo parallelize by uid ranges
-    f = function(x)
-      x[,c(measurementCols, by), with=F][,
-                                   lapply(.SD[,measurementCols,
-                                              with=F], mean),
-                                   by=by]
-    if(getOption('mc.cores') > 1){
-      setkey(x$runtimes, uid)
-      uids = unique(x$runtimes[, uid])
-      uid_sets = chunk(uids, length(uids)/getOption('mc.cores'))
-      x$reduced =
-        rbindlist(mclapply(uid_sets, function(s) f(x$runtimes[J(s)]),
-                           mc.allow.recursive = T))
-    } else
-    x$reduced = f(x$runtimes)
-    x$runtimes = x$runtimes[,nonMeasurementCols,with=F]
-    setkeyv(x$reduced, by)
-    setkeyv(x$runtimes, by)
-    x$reduced = x$runtimes[x$reduced,,mult='first']
-    n_time = system.time(
-      x$reduced <-
-      reduceNoEffect(x$reduced, measurementCols, nonMeasurementCols, by))
-    cat('reduceNoEffect time: ', n_time[3], '\n')
-  } else {
-    ## this is slower by 3x.
-    nonMeasurementCols = setdiff(names(x$runtimes), c(by, measurementCols))
-    x$reduced =
-      x$runtimes[,c(lapply(.SD[,measurementCols,with=F],
-                           mean),
-                    lapply(.SD[,nonMeasurementCols,with=F],
-                           function(col) head(col,1))),
-                 by=by]
-  }
-  x$runtimes = NULL
-  cat('Reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 
   cat('Message edges\n')
   ## all message edges should be identical between runs
@@ -168,13 +137,6 @@ reduceConfs = function(x){
     by = c('s_uid','d_uid',confCols)
     x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
     x$messageEdges[, type:='message']
-    setkey(x$reduced, uid)
-    ## message edges can convert to slack edges, so we need the destination rank
-    rankTable = x$reduced[, list(rank=head(rank,1)), by=uid]
-    setkey(rankTable, uid)
-    setkey(x$messageEdges, d_uid)
-    x$messageEdges = x$messageEdges[rankTable]
-    rm(rankTable)
     x$messageEdges =
       reduceNoEffect(x$messageEdges, c('weight'),
                      setdiff(names(x$messageEdges),
@@ -186,28 +148,27 @@ reduceConfs = function(x){
   by = c('s_uid',confCols)
   x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   x$compEdges[, type:='comp']
-  rankTable = x$reduced[, list(rank=head(rank,1)), by=uid]
-  setkey(rankTable, uid)
   setkey(x$compEdges, d_uid)
-  x$compEdges = x$compEdges[rankTable]
-  rm(rankTable)
   x$compEdges =
     reduceNoEffect(x$compEdges, c('weight','power'),
                    setdiff(names(x$compEdges),
                            c('weight','power')), c('s_uid','d_uid',confCols))
 
   if(!is.null(x$messageEdges)){
-    setkey(x$messageEdges)
+    commonNames = intersect(names(x$messageEdges), names(x$compEdges))
+    messageOnlyNames = setdiff(commonNames, names(x$messageEdges))
+    compOnlyNames = setdiff(commonNames, names(x$compEdges))
+    setkeyv(x$messageEdges, commonNames)
     setkey(x$compEdges, NULL)
     x$edges = merge(x$messageEdges, x$compEdges, all=T)
   } else
     x$edges = x$compEdges
+  x$compEdges = NULL
+  x$messageEdges = NULL
 
   ## set power to zero for message edges
   x$edges[is.na(power), power:=0]
 
-  x$vertices = x$reduced[!is.na(name),list(name=head(name,1)),by=vertex]
-  
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(s_uid)]
 
@@ -322,36 +283,37 @@ go = function(){
   confSpace <<- unique(entries[,confCols,with=F])
 
   f = function(entry){
-    filename = paste('mergedData', entry$key, 'Rsave', sep='.')
+    filename = paste('mergedData', gsub('[/.]', '_', entry$key),
+      'Rsave', sep='.')    
     if(file.exists(filename)){
       cat(entry$key, 'already merged\n')
-      return
+      return(NULL)
     }
-    cat('Merging configurations\n')
+    cat(entry$key, 'Merging configurations\n')
     merged <- mergeConfs(entry, entries)
-    cat('Done merging configurations\n')
-    cat('Reducing configurations\n')
+    cat(entry$key, 'Done merging configurations\n')
+    cat(entry$key, 'Reducing configurations\n')
     reduced <- reduceConfs(merged)
     rm(merged)
     reduced$key <- entry$key
-    cat('Done reducing configurations\n')
-    cat('Writing timeslices\n')
+    cat(entry$key, 'Done reducing configurations\n')
+    cat(entry$key, 'Writing timeslices\n')
     writeSlice(reduced)
-    cat('Done writing timeslices\n')
-    cat('Saving\n')
+    cat(entry$key, 'Done writing timeslices\n')
+    cat(entry$key, 'Saving\n')
     save(measurementCols, reduced, entrySpace, countedEntryspace,
          entryCols, entries, confSpace, confCols,
          entry,
          file=filename)
-    cat('Done saving\n')
+    cat(entry$key, 'Done saving\n')
     ##return(reduced)
   }
   setkeyv(entries, entryCols)
   ##!@todo launch these as separate jobs
   ##result <<-
-  mcrowApply(entrySpace, f)
+  rowApply(entrySpace, f)
   ##names(result) <<- entrySpace$key
-  
+  NULL
 }
 
 f = function(){
