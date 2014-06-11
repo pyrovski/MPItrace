@@ -146,7 +146,14 @@ reduceConfs = function(x){
   cat('Computation edges\n')
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
-  x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
+  setkey(x$compEdges, s_uid)
+  if(getOption('mc.cores') > 1){
+    s_uid_chunks = chunk(unique(x$compEdges[, s_uid]), getOption('mc.cores'))
+    x$compEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids){
+      x$compEdges[J(s_uids)][,lapply(.SD, mean),by=by]
+      }))
+  } else
+    x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   x$compEdges[, type:='comp']
   setkey(x$compEdges, d_uid)
   x$compEdges =
