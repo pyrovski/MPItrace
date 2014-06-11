@@ -220,68 +220,71 @@ reduceConfs = function(x){
   return(x)
 }
 
-writeSlice = function(x){
+writeSlices = function(x){
   options(scipen=7)
-  x$edges = timeslice(x$schedule, x$edges)[[1]]
-  
   firstCols = c('e_uid', confCols)
-  setcolorder(x$edges, c(firstCols, setdiff(names(x$edges), firstCols)))
   confName = gsub('[/.]', '_', x$key)
+  slices = timeslice(x$schedule, x$edges)
+  i = 1
+  for(slice in slices){
+    sliceName = paste(confName, i, sep='.')
+    setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
 
 ###!@todo for now, only output one or two configs per edge. This
 ###!allows a convex representation of the time-power relationship over
 ###!the configuration space. We already output only the configs on the
 ###!pareto frontier; in the future, let the optimizer handle a
 ###!piecewise-linear time-power function.
-  
-  ## write confSpace
-  write.table(unique(x$edges[,confCols,with=F], by=confCols),
-              file=paste(confName,'confSpace.csv',sep='.'), quote=F,
-              sep=',', row.names=F)
+    
+    ## write confSpace
+    write.table(unique(slice[,confCols,with=F], by=confCols),
+                file=paste(sliceName,'confSpace.csv',sep='.'), quote=F,
+                sep=',', row.names=F)
 
-  x$vertices = x$edges[,list(vertex=union(src,dest))]
-  
-  write.table(x$vertices,
-              file=paste(confName, '.vertices.csv', sep=''),
-              row.names=F, quote=F, sep=',')
+    write.table(slice[,list(vertex=union(src,dest))],
+                file=paste(sliceName, '.vertices.csv', sep=''),
+                row.names=F, quote=F, sep=',')
 
 ###!@todo for dependent timeslices, only output one configuration for
 ###!the first computation edge on each rank. This configuration should
 ###!come from the previous timeslice solution.
-  
-  write.table(x$edges[,list(src=head(src, 1), dest=head(dest, 1),
+
+    ##!@todo this is easier to get from x$schedule
+    write.table(slice[,list(src=head(src, 1), dest=head(dest, 1),
                             edge_rank=head(rank,1)),
                       by=e_uid],
-              file=paste(confName, '.edges.csv', sep=''),
-              row.names=F, quote=F, sep=',')
-  write.table(x$edges[,c(firstCols, 'weight', 'power'),with=F],
-              file=paste(confName, '.edge_weights.csv', sep=''),
-              row.names=F, quote=F, sep=',')
-  write.table(x$edges[, list(minPower=min(power), maxPower=max(power)), by=e_uid],
-              file=paste(confName, '.edge_powerRange.csv', sep=''),
-              row.names=F, quote=F, sep=',')
-  write.table(x$edges[, list(minTime=min(weight), maxTime=max(weight)), by=e_uid],
-              file=paste(confName, '.edge_timeRange.csv', sep=''),
-              row.names=F, quote=F, sep=',')
-  write.table(x$edges[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
-              file=paste(confName, '.edge_multiConf.csv', sep=''),
-              row.names=F, quote=F, sep=',')
+                file=paste(sliceName, '.edges.csv', sep=''),
+                row.names=F, quote=F, sep=',')
+    write.table(slice[,c(firstCols, 'weight', 'power'),with=F],
+                file=paste(sliceName, '.edge_weights.csv', sep=''),
+                row.names=F, quote=F, sep=',')
+    write.table(slice[, list(minPower=min(power), maxPower=max(power)), by=e_uid],
+                file=paste(sliceName, '.edge_powerRange.csv', sep=''),
+                row.names=F, quote=F, sep=',')
+    write.table(slice[, list(minTime=min(weight), maxTime=max(weight)), by=e_uid],
+                file=paste(sliceName, '.edge_timeRange.csv', sep=''),
+                row.names=F, quote=F, sep=',')
+    write.table(slice[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
+                file=paste(sliceName, '.edge_multiConf.csv', sep=''),
+                row.names=F, quote=F, sep=',')
 
-  ## ##!I only need a single rank column. Slack edges always go on the
-  ## ##!destination rank, and we don't care about messages. Only the
-  ## ##!computation and slack edges should have rank information.
+    ## ##!I only need a single rank column. Slack edges always go on the
+    ## ##!destination rank, and we don't care about messages. Only the
+    ## ##!computation and slack edges should have rank information.
 
-  ##!@todo this might choose the wrong edge for a rank if multiple
-  ##!edges start at the same time? I guess we should break ties by
-  ##!choosing computation or slack edges, but not message
-  ##!edges. Alternatively, the timeslice time can just depend on all
-  ##!tasks.
-  write.table(
-    x$schedule[e_uid %in% x$edges[,e_uid]][type %in% c('comp', 'slack'),
+    ##!@todo this might choose the wrong edge for a rank if multiple
+    ##!edges start at the same time? I guess we should break ties by
+    ##!choosing computation or slack edges, but not message
+    ##!edges. Alternatively, the timeslice time can just depend on all
+    ##!tasks.
+    write.table(
+      x$schedule[e_uid %in% slice[,e_uid]][type %in% c('comp', 'slack'),
                                            .SD[which.max(start)],
                                            by=rank][,list(rank, last_edge=e_uid)],
-    file=paste(confName, '.last_edges.csv', sep=''),
-    row.names=F, quote=F, sep=',')
+      file=paste(sliceName, '.last_edges.csv', sep=''),
+      row.names=F, quote=F, sep=',')
+    i = i + 1
+  }
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
@@ -316,7 +319,7 @@ go = function(){
     cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     cat(entry$key, 'Writing timeslices\n')
-    writeSlice(reduced)
+    writeSlices(reduced)
     cat(entry$key, 'Done writing timeslices\n')
     cat(entry$key, 'Saving\n')
     save(measurementCols, reduced, entrySpace, countedEntryspace,

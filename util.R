@@ -30,10 +30,7 @@ rlePower = function(powers){
 
 ## return sets of indices for each timeslice and how much of each task
 ## is in each timeslice
-timeslice = function(sched, edges, criticalPath, start=0, length=.01, n=1){
-  if(n != 1)
-    stop("Not implemented yet")
-
+timeslice = function(sched, edges, criticalPath, start=0, length=.01, n=Inf){
   sched$end = sched[, start+weight]
   maxStart = max(sched[,start])
   if(start > maxStart)
