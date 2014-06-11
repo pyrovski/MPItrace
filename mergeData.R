@@ -321,6 +321,8 @@ go = function(){
     cat(entry$key, 'Writing timeslices\n')
     writeSlices(reduced)
     cat(entry$key, 'Done writing timeslices\n')
+    cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    startTime = Sys.time()
     cat(entry$key, 'Saving\n')
     save(measurementCols, reduced, entrySpace, countedEntryspace,
          entryCols, entries, confSpace, confCols,
