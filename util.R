@@ -90,11 +90,11 @@ minConf = function(confs){
 
 ## orders vertices and edges in topological order, adds a start time
 ## and e_uid to each edge, and returns the critical path.
-getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doCritPath=T){
+getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
+  doCritPath=T){
 ### this function is intended to be called with one edge row per e_uid
-  if(any(edges[, list(count=nrow(.SD)), by=e_uid]$count > 1)){
+  if(any(edges[, list(count=nrow(.SD)), by=e_uid]$count > 1))
     stop('Duplicate e_uids in getSchedule\n')
-  }
   
   cat('Graph construction\n')
   edges = data.table::copy(edges)
@@ -125,11 +125,11 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
   vertices[, via:=as.numeric(NA)]
   count = 0
   progress = 0
-  f = function(via){
-    print(via)
-  }
-  debug(f)
+  
+###!@todo this could be faster if we selected only the relevant set of
+###!vertices for each src, then merged after the loop
   for(vertex in vertices_TO$vertex){
+    ##!@todo some of these columns are not used
     outEdges = edges[J(vertex), list(src, dest, e_uid, s_uid, d_uid, type, weight)]
     setkey(outEdges, src)
 
@@ -159,11 +159,14 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))], doC
     count = count + 1
   }
   cat(100, '%\n')
+
+###!@todo this assumes edges start as soon as their dependencies are
+###!satisfied. If we want to schedule from the back, edges should
+###!start as late as possible; for each edge:
+###! start = vertices[J(dest), start] - weight
+  edges = edges[J(vertices[, list(vertex, start)])]
   if(any(edges$start == -Inf))
     warning('Some edges not assigned a start time!\n', immediate. = T)
-
-  ##!@todo does this remove edges?
-  edges = edges[J(vertices[, list(vertex, start)])]
   
   if(doCritPath){
     cat('Critical path\n')
@@ -201,8 +204,8 @@ slackEdges = function(edges, critPath){
     confs = edges[J(u)]
     slack = confs[which.min(power)]
     confs[, c('dest', 'd_uid') := list(-e_uid, NA)]
-    slack[, c('e_uid', 'src', 's_uid', 'weight') :=
-          list(-e_uid, -e_uid, NA, NA)]
+    slack[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
+          list(-e_uid, -e_uid, NA, NA, start + weight)]
     rbind(confs, slack)
   }
   if(length(nonCritEdge_UIDs)){
@@ -213,7 +216,8 @@ slackEdges = function(edges, critPath){
   return(result)
 }
 
-##!@todo there has to be a better way to do this
+##!@todo there has to be a better way to do this. It could be
+##!parallelized by unique "by" groups.
 reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
   if('flags' %in% names(x)){
     xOMP = x[flags & flagBits$omp]
@@ -244,8 +248,8 @@ pareto = function(edges){
           frontier[count <- count + 1] = row
     uid_edges[frontier]
   }
-  ## e_uid is not rank-specific
-  edges[, f(.SD), by=list(e_uid, rank)]
+  setkey(edges, e_uid)
+  rbindlist(mclapply(unique(edges[, e_uid]), function(e) f(edges[J(e)])))
 }
 
 chunk = function(d, n){

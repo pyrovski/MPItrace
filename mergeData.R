@@ -180,6 +180,10 @@ reduceConfs = function(x){
   if(!'e_uid' %in% names(x$edges))
     x$edges[, e_uid := .GRP, by=list(s_uid, d_uid, type)]
   
+  cat('Pareto frontiers\n')
+  ## get pareto frontiers
+  x$edges = pareto(x$edges)
+
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],by=e_uid]
 
@@ -188,16 +192,13 @@ reduceConfs = function(x){
   ##g = schedule$g
   x$schedule = schedule$edges
   x$critPath = schedule$critPath
+  x$vertices = schedule$vertices
   rm(schedule)
   
-  ## copy e_uid to edges
-  setkey(x$schedule, s_uid, d_uid, type)
-  setkey(x$edges, s_uid, d_uid, type)
-  x$edges = x$edges[x$schedule[, list(s_uid, d_uid, type, e_uid)]]
-
-  cat('Pareto frontiers\n')
-  ## get pareto frontiers
-  x$edges = pareto(x$edges)
+  ## copy start time to edges
+  setkey(x$edges, e_uid)
+  setkey(x$schedule, e_uid)
+  x$edges = x$edges[x$schedule[, list(e_uid, start)]]
 
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
@@ -209,11 +210,13 @@ reduceConfs = function(x){
   ## Recompute schedule with slack edges. This will not change the
   ## critical path because no slack edges are on it.
   x$schedule = x$edges[,.SD[which.min(weight)],by=list(e_uid)]
-  ## get topological order again and add start times
-  schedule = getSchedule(x$schedule, doCritPath=F)
-  x$schedule = schedule$edges
-  x$vertices = schedule$vertices
-  rm(schedule)
+
+  ## add slack vertices to vertices table
+  slackVertices =
+    x$schedule[is.na(s_uid),
+               list(start=head(start, 1),via=-head(src, 1)), by=src]
+  setnames(slackVertices, c('vertex', 'start', 'via'))
+  x$vertices = rbind(x$vertices, slackVertices)
   return(x)
 }
 
@@ -288,7 +291,6 @@ go = function(){
   ## group experiments by entryCols from entries
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
-
 
   measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
   confSpace <<- unique(entries[,confCols,with=F])
