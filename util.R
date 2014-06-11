@@ -1,4 +1,4 @@
-powerTime = function(x){
+oldPowerTime = function(x){
   ranks  = unique(x$rank)
   powerCols = grep('_w$',names(x),value=T)
   cols = c('start','duration',powerCols)
@@ -14,6 +14,34 @@ powerTime = function(x){
     as.data.table(cbind(start=times,
           power=rowSums(as.data.table(lapply(steps, function(s) s(times))))))
   return(powers)
+}
+
+powerTime = function(edges){
+  ranks = unique(edges[, rank])
+  f = function(x) c(x, 0)
+  powerSteps = mclapply(ranks, function(r){
+    edges = edges[rank == r]
+    ##! data.table doesn't order correctly?
+    ##[order(start)]
+    o = order(edges[,start])
+    edges = edges[o]
+    times=edges[, start]
+    powers = f(edges[, power])
+    steps = stepfun(x=times, y=powers)
+    list(times=times, steps=steps)
+  })
+  times = sort(unique(unlist(lapply(powerSteps, '[[', 'times'))))
+  steps = lapply(powerSteps, '[[', 'steps')
+  powers =
+    as.data.table(cbind(start=times,
+          power=rowSums(as.data.table(lapply(steps, function(s) s(times))))))
+
+  ## remove runs of identical powers
+  cs = cumsum(rle(rev(powers[, power]))$lengths)
+  sel = rev(tail(cs, 1) + 1 - cs)
+  powers = powers[sel]
+  
+  return(stepfun(powers[,start], f(powers[, power])))
 }
 
 rlePower = function(powers){
