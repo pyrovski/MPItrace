@@ -128,15 +128,25 @@ reduceConfs = function(x){
   by = c('uid',confCols)
   cat('Reducing between configs\n')
 
-  cat('Message edges\n')
   ## all message edges should be identical between runs
-  if(any(sapply(x$messageEdges, is.na))){
+  if(any(is.na(x$messageEdges))){
     cat('No message edges in at least one run\n')
     x$messageEdges = NULL
   } else {
+    cat('Merging message edges\n')
     x$messageEdges = rbindlist(x$messageEdges)
+    cat('Message edges:', nrow(x$messageEdges), '\n')
     by = c('s_uid','d_uid',confCols)
-    x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
+    if(getOption('mc.cores') > 1){
+      setkey(x$messageEdges, s_uid)
+      s_uids = unique(x$messageEdges[, s_uid])
+      s_uid_chunks = chunk(s_uids, length(s_uids)/getOption('mc.cores'))
+      rm(s_uids)
+      x$messageEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids)
+        x$messageEdges[J(s_uids)][,lapply(.SD, mean),by=by]))
+      rm(s_uid_chunks)
+    } else
+      x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
     x$messageEdges[, type:='message']
     x$messageEdges =
       reduceNoEffect(x$messageEdges, c('weight'),
@@ -149,10 +159,12 @@ reduceConfs = function(x){
   by = c('s_uid',confCols)
   setkey(x$compEdges, s_uid)
   if(getOption('mc.cores') > 1){
-    s_uid_chunks = chunk(unique(x$compEdges[, s_uid]), getOption('mc.cores'))
-    x$compEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids){
-      x$compEdges[J(s_uids)][,lapply(.SD, mean),by=by]
-      }))
+    s_uids = unique(x$compEdges[, s_uid])
+    s_uid_chunks = chunk(s_uids, length(s_uids)/getOption('mc.cores'))
+    rm(s_uids)
+    x$compEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids)
+      x$compEdges[J(s_uids)][,lapply(.SD, mean),by=by]))
+    rm(s_uid_chunks)
   } else
     x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
   x$compEdges[, type:='comp']
