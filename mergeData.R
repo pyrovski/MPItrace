@@ -35,6 +35,7 @@ getEntryData = function(entry){
 
 mergeConfs = function(conf, entries){
   print(conf)
+  cat(length(entries[conf, which=T]), ' entries\n')
   result = rowApply(entries[conf], getEntryData)
 
   cat(conf$key, 'loaded data\n')
@@ -225,7 +226,7 @@ reduceConfs = function(x){
   return(x)
 }
 
-writeSlices = function(x){
+writeSlices = function(x, sliceDir='csv'){
   options(scipen=7)
   firstCols = c('e_uid', confCols)
   confName = gsub('[/.]', '_', x$key)
@@ -243,11 +244,11 @@ writeSlices = function(x){
     
     ## write confSpace
     write.table(unique(slice[,confCols,with=F], by=confCols),
-                file=paste(sliceName,'confSpace.csv',sep='.'), quote=F,
-                sep=',', row.names=F)
+                file=file.path(sliceDir, paste(sliceName,'confSpace.csv',sep='.')),
+                quote=F, sep=',', row.names=F)
 
     write.table(slice[,list(vertex=union(src,dest))],
-                file=paste(sliceName, '.vertices.csv', sep=''),
+                file=file.path(sliceDir, paste(sliceName, '.vertices.csv', sep='')),
                 row.names=F, quote=F, sep=',')
 
 ###!@todo for dependent timeslices, only output one configuration for
@@ -258,19 +259,19 @@ writeSlices = function(x){
     write.table(slice[,list(src=head(src, 1), dest=head(dest, 1),
                             edge_rank=head(rank,1)),
                       by=e_uid],
-                file=paste(sliceName, '.edges.csv', sep=''),
+                file=file.path(sliceDir, paste(sliceName, '.edges.csv', sep='')),
                 row.names=F, quote=F, sep=',')
     write.table(slice[,c(firstCols, 'weight', 'power'),with=F],
-                file=paste(sliceName, '.edge_weights.csv', sep=''),
+                file=file.path(sliceDir, paste(sliceName, '.edge_weights.csv', sep='')),
                 row.names=F, quote=F, sep=',')
     write.table(slice[, list(minPower=min(power), maxPower=max(power)), by=e_uid],
-                file=paste(sliceName, '.edge_powerRange.csv', sep=''),
+                file=file.path(sliceDir, paste(sliceName, '.edge_powerRange.csv', sep='')),
                 row.names=F, quote=F, sep=',')
     write.table(slice[, list(minTime=min(weight), maxTime=max(weight)), by=e_uid],
-                file=paste(sliceName, '.edge_timeRange.csv', sep=''),
+                file=file.path(sliceDir, paste(sliceName, '.edge_timeRange.csv', sep='')),
                 row.names=F, quote=F, sep=',')
     write.table(slice[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
-                file=paste(sliceName, '.edge_multiConf.csv', sep=''),
+                file=file.path(sliceDir, paste(sliceName, '.edge_multiConf.csv', sep='')),
                 row.names=F, quote=F, sep=',')
 
     ## ##!I only need a single rank column. Slack edges always go on the
@@ -286,7 +287,7 @@ writeSlices = function(x){
       x$schedule[e_uid %in% slice[,e_uid]][type %in% c('comp', 'slack'),
                                            .SD[which.max(start)],
                                            by=rank][,list(rank, last_edge=e_uid)],
-      file=paste(sliceName, '.last_edges.csv', sep=''),
+      file=file.path(sliceDir, paste(sliceName, '.last_edges.csv', sep='')),
       row.names=F, quote=F, sep=',')
     i = i + 1
   }
