@@ -279,6 +279,7 @@ pareto = function(edges){
     count = 1
     frontier = c(1)
     if(nrow(uid_edges) > 1)
+      ##!@todo speed this up
       for(row in 2:nrow(uid_edges))
         if(uid_edges[row, power] < uid_edges[frontier[count], power])
           frontier[count <- count + 1] = row
@@ -289,5 +290,6 @@ pareto = function(edges){
 }
 
 chunk = function(d, n){
+  ##!@todo verify cases where n does not evenly divide d
   split(d, ceiling(seq_along(d)/n))
 }
