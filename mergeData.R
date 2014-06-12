@@ -35,6 +35,7 @@ getEntryData = function(entry){
 
 mergeConfs = function(conf, entries){
   print(conf)
+  setkeyv(entries, entryCols)
   cat(length(entries[conf, which=T]), ' entries\n')
   result = rowApply(entries[conf], getEntryData)
 
@@ -137,10 +138,11 @@ reduceConfs = function(x){
     x$messageEdges = rbindlist(x$messageEdges)
     cat('Message edges:', nrow(x$messageEdges), '\n')
     by = c('s_uid','d_uid',confCols)
-    if(getOption('mc.cores') > 1){
+    cores = getOption('mc.cores')
+    if(!is.null(cores) && cores > 1){
       setkey(x$messageEdges, s_uid)
       s_uids = unique(x$messageEdges[, s_uid])
-      s_uid_chunks = chunk(s_uids, length(s_uids)/getOption('mc.cores'))
+      s_uid_chunks = chunk(s_uids, length(s_uids)/cores)
       rm(s_uids)
       x$messageEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids)
         x$messageEdges[J(s_uids)][,lapply(.SD, mean),by=by]))
@@ -158,9 +160,10 @@ reduceConfs = function(x){
   x$compEdges = rbindlist(x$compEdges)
   by = c('s_uid',confCols)
   setkey(x$compEdges, s_uid)
-  if(getOption('mc.cores') > 1){
+  cores = getOption('mc.cores')
+  if(!is.null(cores) && cores > 1){
     s_uids = unique(x$compEdges[, s_uid])
-    s_uid_chunks = chunk(s_uids, length(s_uids)/getOption('mc.cores'))
+    s_uid_chunks = chunk(s_uids, length(s_uids)/cores)
     rm(s_uids)
     x$compEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids)
       x$compEdges[J(s_uids)][,lapply(.SD, mean),by=by]))
@@ -315,6 +318,7 @@ go = function(){
 
   measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
   confSpace <<- unique(entries[,confCols,with=F])
+  setkey(confSpace)
 
   f = function(entry){
     startTime = Sys.time()
@@ -324,6 +328,18 @@ go = function(){
       cat(entry$key, 'already merged\n')
       return(NULL)
     }
+
+### check for missing configs
+    confs = unique(entries[entry, confCols, with=F])
+    setkey(confs)
+    missingConfs = confSpace[!confs]
+    if(nrow(missingConfs)){
+      warning(cat(entry$key, 'missing', nrow(missingConfs), 'configs\n'),
+              immediate.=T)
+      print(missingConfs)
+      save(missingConfs, file=paste('missing', gsub('[/.]', '_', entry$key), sep='.'))
+    }
+    
     cat(entry$key, 'Merging configurations\n')
     merged <- mergeConfs(entry, entries)
     cat(entry$key, 'Done merging configurations\n')

@@ -253,11 +253,22 @@ reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
   }
   xNoOMP[, OMP_NUM_THREADS:=1]
   xNoOMP_unreduced = xNoOMP[, nonMeasurementCols, with=F]
-  xNoOMP_reduced =
-    xNoOMP[,lapply(.SD[, measurementCols, with=F], mean), by=by]
+  xNoOMP = xNoOMP[, c(measurementCols, by), with=F]
+  cores = getOption('mc.cores')
+  if(!is.null(cores) && cores > 1){
+    setkeyv(xNoOMP, by)
+    u  = unique(xNoOMP[, by, with=F])
+    chunks = chunk(u, nrow(u)/cores)
+    rm(u)
+    xNoOMP_reduced =
+      rbindlist(mclapply(chunks, function(ch)
+                         xNoOMP[ch,lapply(.SD, mean), by=by]))
+    rm(chunks)
+  } else
+    xNoOMP_reduced = xNoOMP[,lapply(.SD, mean), by=by]
   setkeyv(xNoOMP_unreduced, by)
   setkeyv(xNoOMP_reduced, by)
-  xNoOMP = xNoOMP_unreduced[xNoOMP_reduced,, mult='first']
+  xNoOMP = xNoOMP_unreduced[xNoOMP_reduced, mult='first']
   rbind(xNoOMP, xOMP, use.names=T)
 }
 
