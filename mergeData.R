@@ -177,8 +177,13 @@ reduceConfs = function(x){
   x$edges[is.na(power), power:=0]
 
   ## assign edge uids
-  if(!'e_uid' %in% names(x$edges))
-    x$edges[, e_uid := .GRP, by=list(s_uid, d_uid, type)]
+  if(!'e_uid' %in% names(x$edges)){
+    setkey(x$edges, s_uid, d_uid, type)
+    uids = x$edges[, list(e_uid=.GRP), keyby=list(s_uid, d_uid, type)]
+    e = x$edges[uids]
+    x$edges = e
+    rm(uids, e)
+  }
   
   cat('Pareto frontiers\n')
   ## get pareto frontiers
