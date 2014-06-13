@@ -276,14 +276,13 @@ pareto = function(edges){
   ##!return the rows with configurations on the pareto frontier for each edge uid
   f = function(uid_edges){
     uid_edges = uid_edges[order(weight, power)]
-    count = 1
-    frontier = c(1)
-    if(nrow(uid_edges) > 1)
-      ##!@todo speed this up
-      for(row in 2:nrow(uid_edges))
-        if(uid_edges[row, power] < uid_edges[frontier[count], power])
-          frontier[count <- count + 1] = row
-    uid_edges[frontier]
+
+    frontier = NULL
+    while(nrow(uid_edges) > 0){
+      frontier = rbind(frontier, uid_edges[1])
+      uid_edges = uid_edges[power < tail(frontier, 1)[, power]]
+    }
+    frontier
   }
   setkey(edges, e_uid)
   rbindlist(mclapply(unique(edges[, e_uid]), function(e) f(edges[J(e)])))
