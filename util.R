@@ -76,12 +76,12 @@ powerStats = function(edges){
   powersMinTime = powerTime(sched)
   
   ## max power
-  sched = getSchedule(edges[,.SD[which.max(power)],by=e_uid])$edges
+  sched = getSchedule(edges[,.SD[which.max(power)],by=e_uid])
   sched = slackEdges(sched$edges, sched$critPath)
   powersMaxPower = powerTime(sched)
 
   ## min power
-  sched = getSchedule(edges[,.SD[which.min(power)],by=e_uid])$edges
+  sched = getSchedule(edges[,.SD[which.min(power)],by=e_uid])
   sched = slackEdges(sched$edges, sched$critPath)
   powersMinPower = powerTime(sched)
 
@@ -187,6 +187,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
 ###!@todo this could be faster if we selected only the relevant set of
 ###!vertices for each src, then merged after the loop
+
+###!@todo using the igraph query mechanisms may also improve the speed
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){

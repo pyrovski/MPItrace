@@ -347,9 +347,13 @@ go = function(){
     reduced$key <- entry$key
     cat(entry$key, 'Done reducing configurations\n')
     cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    ## startTime = Sys.time()
-    ## powerStats(reduced$edges)
-    ## cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    startTime = Sys.time()
+    ##powerStats(reduced$edges)
+    p = powerTime(reduced$sched)
+    reduced$maxPower = max(p[, power])
+    ## this is not entirely precise
+    minPower = min(reduced$edges[power > 0, power]) * entry$ranks
+    cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     cat(entry$key, 'Writing timeslices\n')
     writeSlices(reduced)
