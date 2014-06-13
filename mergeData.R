@@ -245,9 +245,7 @@ writeSlices = function(x, sliceDir='csv'){
 ###!@todo this would use less memory if we computed one slice at a time
   slices = timeslice(x$schedule, rbind(x$vertices, x$slackVertices), x$edges)
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
-  i = 1
-  for(sliceTime in names(slices)){
-    slice = slices[[sliceTime]]
+  writeSlice = function(slice, sliceTime){
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
 
@@ -304,8 +302,9 @@ writeSlices = function(x, sliceDir='csv'){
                                            by=rank][,list(rank, last_edge=e_uid)],
       file=file.path(sliceDir, paste(sliceName, '.last_edges.csv', sep='')),
       row.names=F, quote=F, sep=',')
-    i = i + 1
   }
+  mclapply(names(slices), function(sliceTime) writeSlice(slices[[sliceTime]], sliceTime))
+  NULL
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
