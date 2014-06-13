@@ -1,4 +1,21 @@
-mcdtby = function(x, by){
+mcdtby = function(x, chunkBy, by, f, SDcols='all'){
+  cores = getOption('mc.cores')
+  if(length(chunkBy) != 1)
+    stop('expected chunkBy of length 1\n')
+  if(!is.null(cores) && cores > 1){
+    setkeyv(x, by)
+    groups = unique(x[, chunkBy, with=F])
+    sets = chunk(groups, length(groups)/cores)
+    ##!@todo
+    rm(groups)
+    result = rbindlist(mclapply(sets, function(s) x[s]))
+  } else {
+    if(SDcols == 'all')
+      result = x[, f(.SD), by=by]
+    else
+      result = x[, f(.SD), by=by, .SDcols=SDcols]
+  }
+  return(result)
 }
 
 oldPowerTime = function(x){
@@ -22,8 +39,8 @@ oldPowerTime = function(x){
 powerTime = function(edges){
   ranks = unique(edges[, rank])
   f = function(x) c(x, 0)
-  powerSteps = mclapply(ranks, function(r){
-    edges = edges[rank == r]
+  rf = function(r){
+    edges = edges[rank == r & power > 0]
     ##! data.table doesn't order correctly?
     ##[order(start)]
     o = order(edges[,start])
@@ -31,8 +48,11 @@ powerTime = function(edges){
     times=edges[, start]
     powers = f(edges[, power])
     steps = stepfun(x=times, y=powers)
-    list(times=times, steps=steps)
-  })
+    list(times=times,
+         ##powers=powers,
+         steps=steps)
+  }
+  powerSteps = mclapply(ranks, rf)
   times = sort(unique(unlist(lapply(powerSteps, '[[', 'times'))))
   steps = lapply(powerSteps, '[[', 'steps')
   powers =
@@ -48,19 +68,21 @@ powerTime = function(edges){
 }
 
 powerStats = function(edges){
-### need to re-assign start times, but can simplify because we're not
-### dealing with all edges for each set
+### need to assign start times for each set
 
   ##fastest
-  sched = getSchedule(edges[,.SD[which.min(weight)],by=e_uid])$edges
+  sched = getSchedule(edges[,.SD[which.min(weight)],by=e_uid])
+  sched = slackEdges(sched$edges, sched$critPath)
   powersMinTime = powerTime(sched)
   
   ## max power
   sched = getSchedule(edges[,.SD[which.max(power)],by=e_uid])$edges
+  sched = slackEdges(sched$edges, sched$critPath)
   powersMaxPower = powerTime(sched)
 
   ## min power
   sched = getSchedule(edges[,.SD[which.min(power)],by=e_uid])$edges
+  sched = slackEdges(sched$edges, sched$critPath)
   powersMinPower = powerTime(sched)
 
   list(minTime  = powersMinTime,
@@ -165,6 +187,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
 ###!@todo this could be faster if we selected only the relevant set of
 ###!vertices for each src, then merged after the loop
+  
+###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
     ##!@todo some of these columns are not used
     outEdges = edges[J(vertex), list(src, dest, e_uid, s_uid, d_uid, type, weight)]
@@ -182,6 +206,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 
     ## update start times for dest vertices
     v = vertices[v[, list(dest, start_u, e_uid)]]
+    ## join on the dest vertex from v and 'vertex' from vertices
+    
     vertices[J(v[start_u > start,
                  list(start_u, e_uid),
                  keyby=vertex]),
@@ -202,9 +228,10 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!start as late as possible; for each edge:
 ###! start = vertices[J(dest), start] - weight
   edges = edges[J(vertices[, list(vertex, start)])]
+ 
   if(any(edges$start == -Inf))
-    warning('Some edges not assigned a start time!\n', immediate. = T)
-  
+    stop('Some edges not assigned a start time!\n')
+
   if(doCritPath){
     cat('Critical path\n')
 
@@ -303,5 +330,8 @@ pareto = function(edges){
 
 chunk = function(d, n){
   ##!@todo verify cases where n does not evenly divide d
+##  if(inherits(d, 'data.table')){
+##    lapply(split(1:nrow(d), ceiling(seq_along(d)/n)), function(s) d[s])
+##  } else
   split(d, ceiling(seq_along(d)/n))
 }

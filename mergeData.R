@@ -217,27 +217,23 @@ reduceConfs = function(x){
   rm(schedule)
   
   ## copy start time to edges
-  setkey(x$edges, e_uid)
-  setkey(x$schedule, e_uid)
-  x$edges = x$edges[x$schedule[, list(e_uid, start)]]
+  ## setkey(x$edges, e_uid)
+  ## setkey(x$schedule, e_uid)
+  ## x$edges = x$edges[x$schedule[, list(e_uid, start)]]
 
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
   cat('Slack edges\n')
-  x$edges = slackEdges(x$edges, x$critPath)
-  x$edges[is.na(weight), weight:=0]
-
-  ## Recompute schedule with slack edges. This will not change the
-  ## critical path because no slack edges are on it.
-  x$schedule = x$edges[,.SD[which.min(weight)],by=list(e_uid)]
+  x$schedule = slackEdges(x$schedule, x$critPath)
+  x$schedule[is.na(weight), weight:=0]
 
   ## add slack vertices to vertices table
-  slackVertices =
+  x$slackVertices =
     x$schedule[is.na(s_uid),
                list(start=head(start, 1),via=-head(src, 1)), by=src]
-  setnames(slackVertices, c('vertex', 'start', 'via'))
-  x$vertices = rbind(x$vertices, slackVertices)
+  setnames(x$slackVertices, c('vertex', 'start', 'via'))
+  ##x$vertices = rbind(x$vertices, slackVertices)
   return(x)
 }
 
@@ -351,6 +347,9 @@ go = function(){
     reduced$key <- entry$key
     cat(entry$key, 'Done reducing configurations\n')
     cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    ## startTime = Sys.time()
+    ## powerStats(reduced$edges)
+    ## cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     cat(entry$key, 'Writing timeslices\n')
     writeSlices(reduced)
