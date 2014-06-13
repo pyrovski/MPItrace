@@ -120,20 +120,19 @@ timeslice = function(sched, vertices, edges, criticalPath,
     ## interior edges: entirely included in the interval
     int =
       sched[start >= sliceTime & deadline <= nextSlice, list(e_uid, weight)]
-    int[,c('left', 'right') := list(0, 1)]
+    int[,c('left', 'right') := list(0, weight)]
 
     ## exterior edges: edges include interval
     ext =
       sched[start <  sliceTime & deadline >  nextSlice,
             list(e_uid, weight, left=(sliceTime-start),
                  right=weight-(deadline-nextSlice))]
-    ext[weight == 0, c('left', 'right') := list(0,0)]
 
     ## left overlap
     left =
       sched[start <  sliceTime & deadline >   sliceTime & deadline <= nextSlice,
             list(e_uid, weight, left=(sliceTime-start))]
-    left[, right := 1]
+    left[, right := weight]
     
     ## right overlap
     right =
@@ -143,6 +142,7 @@ timeslice = function(sched, vertices, edges, criticalPath,
     setcolorder(right, names(int))
     
     result = rbind(int, ext, left, right)
+    result[weight == 0, c('left', 'right') := list(0,0)]
     ## at this point, right and left are in seconds. We want them to
     ## be fractions of the original edge weight.
     if(nrow(result[left > right]) > 0){
