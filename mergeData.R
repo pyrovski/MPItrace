@@ -241,10 +241,14 @@ writeSlices = function(x, sliceDir='csv'){
   options(scipen=7)
   firstCols = c('e_uid', confCols)
   confName = gsub('[/.]', '_', x$key)
+
+###!@todo this would use less memory if we computed one slice at a time
   slices = timeslice(x$schedule, x$edges)
+  names(slices) = sprintf('%.3f', as.numeric(names(slices)))
   i = 1
-  for(slice in slices){
-    sliceName = paste(confName, i, sep='.')
+  for(sliceTime in names(slices)){
+    slice = slices[[sliceTime]]
+    sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
 
 ###!@todo for now, only output one or two configs per edge. This
@@ -275,11 +279,11 @@ writeSlices = function(x, sliceDir='csv'){
     write.table(slice[,c(firstCols, 'weight', 'power'),with=F],
                 file=file.path(sliceDir, paste(sliceName, '.edge_weights.csv', sep='')),
                 row.names=F, quote=F, sep=',')
-    write.table(slice[, list(minPower=min(power), maxPower=max(power)), by=e_uid],
-                file=file.path(sliceDir, paste(sliceName, '.edge_powerRange.csv', sep='')),
-                row.names=F, quote=F, sep=',')
-    write.table(slice[, list(minTime=min(weight), maxTime=max(weight)), by=e_uid],
-                file=file.path(sliceDir, paste(sliceName, '.edge_timeRange.csv', sep='')),
+    write.table(slice[,list(minTime=min(weight),
+                            maxTime=max(weight),
+                            minPower=min(power),
+                            maxPower=max(power)), by=e_uid],
+                file=file.path(sliceDir, paste(sliceName, '.edge_ranges.csv', sep='')),
                 row.names=F, quote=F, sep=',')
     write.table(slice[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
                 file=file.path(sliceDir, paste(sliceName, '.edge_multiConf.csv', sep='')),
