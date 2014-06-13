@@ -314,6 +314,8 @@ reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
 }
 
 pareto = function(edges){
+  startTime = Sys.time()
+
   ##!return the rows with configurations on the pareto frontier for each edge uid
   f = function(uid_edges){
     uid_edges = uid_edges[order(weight, power)]
@@ -327,7 +329,9 @@ pareto = function(edges){
     frontier
   }
   setkey(edges, e_uid)
-  rbindlist(mclapply(unique(edges[, e_uid]), function(e) f(edges[J(e)])))
+  result = rbindlist(mclapply(unique(edges[, e_uid]), function(e) f(edges[J(e)])))
+  cat('Pareto time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  result
 }
 
 chunk = function(d, n){
