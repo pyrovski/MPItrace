@@ -126,7 +126,8 @@ timeslice = function(sched, vertices, edges, criticalPath,
     ext =
       sched[start <  sliceTime & deadline >  nextSlice,
             list(e_uid, weight, left=(sliceTime-start),
-                 right=1-(deadline-nextSlice))]
+                 right=weight-(deadline-nextSlice))]
+    ext[weight == 0, c('left', 'right') := list(0,0)]
 
     ## left overlap
     left =
@@ -144,8 +145,9 @@ timeslice = function(sched, vertices, edges, criticalPath,
     result = rbind(int, ext, left, right)
     ## at this point, right and left are in seconds. We want them to
     ## be fractions of the original edge weight.
-    if(nrow(result[left > right]) > 0)
+    if(nrow(result[left > right]) > 0){
       stop('invalid slicing\n')
+    }
 
 ###!we need to modify all edges according to the fraction in the
 ###!timeslice, not just the scheduled edges. So, find out which edges
