@@ -243,7 +243,7 @@ writeSlices = function(x, sliceDir='csv'){
   confName = gsub('[/.]', '_', x$key)
 
 ###!@todo this would use less memory if we computed one slice at a time
-  slices = timeslice(x$schedule, x$edges)
+  slices = timeslice(x$schedule, rbind(x$vertices, x$slackVertices), x$edges)
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
   i = 1
   for(sliceTime in names(slices)){

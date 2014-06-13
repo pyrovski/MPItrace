@@ -91,9 +91,19 @@ powerStats = function(edges){
 }
 
 ## return sets of indices for each timeslice and how much of each task
-## is in each timeslice
-timeslice = function(sched, edges, criticalPath, start=0, length=.01, n=Inf){
-  sched$end = sched[, start+weight]
+## is in each timeslice. Slack edges have zero weight, so they will
+## never be bisected by a timeslice. They are important to include
+## because they contribute to power consumption.
+
+##!@todo for the following situation, make sure to include the
+##!preceding slack edge in the second timeslice:
+##|        x|xx      x|x          
+##|   xxxxx |  xxxxxx |            
+timeslice = function(sched, vertices, edges, criticalPath,
+  start=0, length=.01, n=Inf){
+  setkey(vertices, vertex)
+  setkey(sched, dest)
+  sched[vertices, deadline:=i.start]
   maxStart = max(sched[,start])
   if(start > maxStart)
     stop('Start past last task')
@@ -106,35 +116,50 @@ timeslice = function(sched, edges, criticalPath, start=0, length=.01, n=Inf){
     nextSlice = sliceTime + length
 ### There's a package for finding interval overlap, but we only do
 ### this once.
+
+    ## interior edges: entirely included in the interval
     int =
-      sched[start >= sliceTime & end <= nextSlice,
-            list(e_uid)] ## interior
+      sched[start >= sliceTime & deadline <= nextSlice, list(e_uid, weight)]
     int[,c('left', 'right') := list(0, 1)]
+
+    ## exterior edges: edges include interval
     ext =
-      sched[start <  sliceTime & end >  nextSlice,
-            list(e_uid, left=(sliceTime-start)/weight,
-                 right=(end-nextSlice)/weight)] ## exterior
+      sched[start <  sliceTime & deadline >  nextSlice,
+            list(e_uid, weight, left=(sliceTime-start),
+                 right=1-(deadline-nextSlice))]
+
     ## left overlap
     left =
-      sched[start <  sliceTime & end >   sliceTime & end <= nextSlice,
-            list(e_uid, left=(sliceTime-start)/weight)]
+      sched[start <  sliceTime & deadline >   sliceTime & deadline <= nextSlice,
+            list(e_uid, weight, left=(sliceTime-start))]
     left[, right := 1]
+    
     ## right overlap
     right =
-      sched[start >= sliceTime & start < nextSlice & end >  nextSlice,
-            list(e_uid, right=(nextSlice-start)/weight)]
+      sched[start >= sliceTime & start < nextSlice & deadline >  nextSlice,
+            list(e_uid, weight, right=(nextSlice-start))]
     right[, left := 0]
     setcolorder(right, names(int))
     
     result = rbind(int, ext, left, right)
+    ## at this point, right and left are in seconds. We want them to
+    ## be fractions of the original edge weight.
+    if(nrow(result[left > right]) > 0)
+      stop('invalid slicing\n')
 
 ###!we need to modify all edges according to the fraction in the
 ###!timeslice, not just the scheduled edges. So, find out which edges
 ###!are in the timeslice, then determine their splits. Possible splits
 ###!depend on the type of overlap.
 
-    return(edges[result][,c('weight', 'left', 'right') :=
-                         list((right-left)*weight, NULL, NULL)])
+    result[weight != 0, c('frac','left','right') :=
+           list((right-left)/weight, NULL, NULL)]
+    result[weight == 0, frac := 0]
+    result[, weight := NULL]
+    result = edges[result][,c('weight','frac') := list(frac*weight, NULL)]
+    if(nrow(result[weight < 0]) > 0)
+      stop('Negative-weight edge(s)\n')
+    return(result)
   }
 
   result = nnapply(sliceTimes, f)
