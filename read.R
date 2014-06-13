@@ -965,7 +965,7 @@ shortStats = function(x, thresh=.001){
   cat(shortTimeRatio * 100, '% of time in short tasks\n')
 }
 
-run = function(path='.', saveResult=F, name='merged.Rsave'){
+run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   startTime = Sys.time()
   cat('Reading ', path,' (', getwd(), ')\n')
   a = readAll(path)
@@ -1010,5 +1010,8 @@ run = function(path='.', saveResult=F, name='merged.Rsave'){
     cat('save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   } else
     result$graph = g$graph
-  return(result)
+  if(noReturn)
+    return(NULL)
+  else
+    return(result)
 }
