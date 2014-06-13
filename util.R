@@ -1,3 +1,6 @@
+mcdtby = function(x, by){
+}
+
 oldPowerTime = function(x){
   ranks  = unique(x$rank)
   powerCols = grep('_w$',names(x),value=T)
@@ -41,19 +44,28 @@ powerTime = function(edges){
   sel = rev(tail(cs, 1) + 1 - cs)
   powers = powers[sel]
   
-  return(stepfun(powers[,start], f(powers[, power])))
+  return(powers)
 }
 
-rlePower = function(powers){
-  b = rle(powers$power)
-  newPowers = powers[1:b$lengths[1]]
-  row = 1 + b$lengths[1]
-  for(rle_index in 2:length(b$lengths)){
-    newPowers = rbind(newPowers, powers[row])
-    row = row + b$lengths[rle_index]
-  }
-  rbind(newPowers, as.data.table(list(start=max(powers$start), power=0)))
-  ##newPowers
+powerStats = function(edges){
+### need to re-assign start times, but can simplify because we're not
+### dealing with all edges for each set
+
+  ##fastest
+  sched = getSchedule(edges[,.SD[which.min(weight)],by=e_uid])$edges
+  powersMinTime = powerTime(sched)
+  
+  ## max power
+  sched = getSchedule(edges[,.SD[which.max(power)],by=e_uid])$edges
+  powersMaxPower = powerTime(sched)
+
+  ## min power
+  sched = getSchedule(edges[,.SD[which.min(power)],by=e_uid])$edges
+  powersMinPower = powerTime(sched)
+
+  list(minTime  = powersMinTime,
+       maxPower = powersMaxPower,
+       minPower = powersMinPower)
 }
 
 ## return sets of indices for each timeslice and how much of each task
@@ -276,6 +288,7 @@ pareto = function(edges){
   ##!return the rows with configurations on the pareto frontier for each edge uid
   f = function(uid_edges){
     uid_edges = uid_edges[order(weight, power)]
+    ##!@todo if total variance is less than .5%, choose a single config
 
     frontier = NULL
     while(nrow(uid_edges) > 0){
