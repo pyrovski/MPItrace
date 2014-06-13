@@ -162,7 +162,10 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   if(any(edges[, weight] < 0)){
     stop('Negative-weight edge(s)!')
   }
-  g = graph.data.frame(edges)
+  g =
+    graph.data.frame(edges[,c('src','dest','weight','power','e_uid',
+                              's_uid','d_uid','rank','type',
+                              confCols), with=F])
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   cat('Topological ordering\n')
@@ -189,6 +192,9 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!vertices for each src, then merged after the loop
 
 ###!@todo using the igraph query mechanisms may also improve the speed
+  ## I checked this, and it seems that the '[[' operator time is the
+  ## same regardless of whether I want info for one vertex or many,
+  ## and g[[1]] also slower than evaluating e[src==1, dest]
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
