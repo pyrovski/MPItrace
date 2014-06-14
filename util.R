@@ -209,6 +209,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 
   ## define a start time for each edge
   cat('Start times\n')
+  startTime = Sys.time()
+
   vertices$start = -Inf
   vertices[J(1), start := 0]
   vertices[, via:=as.numeric(NA)]
@@ -266,6 +268,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
  
   if(any(edges$start == -Inf))
     stop('Some edges not assigned a start time!\n')
+  cat('Start times time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 
   if(doCritPath){
     cat('Critical path\n')
@@ -346,23 +349,17 @@ reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
   rbind(xNoOMP, xOMP, use.names=T)
 }
 
+.pareto = function(uid_edges){
+  ##!@todo if total variance is less than .5%, choose a single config
+  uid_edges[order(weight, power)][!duplicated(cummin(uid_edges[,power]))]
+}
+
 pareto = function(edges){
   startTime = Sys.time()
 
   ##!return the rows with configurations on the pareto frontier for each edge uid
-  f = function(uid_edges){
-    uid_edges = uid_edges[order(weight, power)]
-    ##!@todo if total variance is less than .5%, choose a single config
-
-    frontier = NULL
-    while(nrow(uid_edges) > 0){
-      frontier = rbind(frontier, uid_edges[1])
-      uid_edges = uid_edges[power < tail(frontier, 1)[, power]]
-    }
-    frontier
-  }
   setkey(edges, e_uid)
-  result = rbindlist(mclapply(unique(edges[, e_uid]), function(e) f(edges[J(e)])))
+  result = rbindlist(mclapply(unique(edges[, e_uid]), function(e) .pareto(edges[J(e)])))
   cat('Pareto time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   result
 }
