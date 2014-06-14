@@ -223,12 +223,14 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!@todo using the igraph query mechanisms may also improve the speed
   ## I checked this, and it seems that the '[[' operator time is the
   ## same regardless of whether I want info for one vertex or many,
-  ## and g[[1]] also slower than evaluating e[src==1, dest]
+  ## and g[[1]] also slower than evaluating e[src==1, dest]. However,
+  ## incident() and neighbors() seem to be fast.  neighbors() seems to
+  ## take edge direction into account.
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
     ##!@todo some of these columns are not used
-    outEdges = edges[J(vertex), list(src, dest, e_uid, s_uid, d_uid, type, weight)]
+    outEdges = edges[J(vertex), list(src, dest, e_uid, weight)]
     setkey(outEdges, src)
 
     ## get start times for src vertices
