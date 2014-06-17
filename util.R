@@ -362,7 +362,8 @@ pareto = function(edges){
   .pareto = function(e){
     if(e %% 1000 == 0)
       cat('e_uid', e, 'of', e_uid_count, '\n')
-    edges[J(e)][order(weight, power)][!duplicated(cummin(power))]
+    result = edges[J(e)][order(weight, power)][!duplicated(cummin(power))]
+    result[chull(result[, list(weight, power)])]
     ##!@todo if total variance is less than .5%, choose a single config
     ## if(is.unsorted(result[, weight]))
     ##   stop('Pareto error: weight ', e)
