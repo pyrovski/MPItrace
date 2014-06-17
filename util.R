@@ -351,17 +351,22 @@ reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
   rbind(xNoOMP, xOMP, use.names=T)
 }
 
-.pareto = function(uid_edges){
-  ##!@todo if total variance is less than .5%, choose a single config
-  uid_edges[order(weight, power)][!duplicated(cummin(uid_edges[,power]))]
-}
 
 pareto = function(edges){
   startTime = Sys.time()
 
-  ##!return the rows with configurations on the pareto frontier for each edge uid
   setkey(edges, e_uid)
-  result = rbindlist(mclapply(unique(edges[, e_uid]), function(e) .pareto(edges[J(e)])))
+  e_uid_count = length(unique(edges[, e_uid]))
+
+  ##!return the rows with configurations on the pareto frontier for each edge uid
+  .pareto = function(e){
+    uid_edges = edges[J(e)]
+    if(e %% 1000 == 0)
+      cat('e_uid', e, 'of', e_uid_count, '\n')
+    ##!@todo if total variance is less than .5%, choose a single config
+    uid_edges[order(weight, power)][!duplicated(cummin(uid_edges[,power]))]
+  }
+  result = rbindlist(mclapply(unique(edges[, e_uid]), .pareto))
   cat('Pareto time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   result
 }
