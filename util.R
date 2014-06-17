@@ -360,11 +360,14 @@ pareto = function(edges){
 
   ##!return the rows with configurations on the pareto frontier for each edge uid
   .pareto = function(e){
-    uid_edges = edges[J(e)]
     if(e %% 1000 == 0)
       cat('e_uid', e, 'of', e_uid_count, '\n')
+    edges[J(e)][order(weight, power)][!duplicated(cummin(power))]
     ##!@todo if total variance is less than .5%, choose a single config
-    uid_edges[order(weight, power)][!duplicated(cummin(uid_edges[,power]))]
+    ## if(is.unsorted(result[, weight]))
+    ##   stop('Pareto error: weight ', e)
+    ## if(is.unsorted(rev(result[, power])))
+    ##   stop('Pareto error: power ', e)
   }
   result = rbindlist(mclapply(unique(edges[, e_uid]), .pareto))
   cat('Pareto time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
