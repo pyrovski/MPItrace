@@ -100,15 +100,19 @@ powerStats = function(edges){
 ##|        x|xx      x|x          
 ##|   xxxxx |  xxxxxx |            
 timeslice = function(sched, vertices, edges, criticalPath,
-  start=0, length=.01, n=Inf){
+  ts_start=0, length=.01, n=Inf){
   setkey(vertices, vertex)
   setkey(sched, dest)
-  sched[vertices, deadline:=i.start]
+  sched = sched[vertices[, list(vertex, deadline=start)]]
+  if(nrow(sched[start > deadline]) > 0){
+    stop('invalid deadline!\n')
+  }
+  sched[, wslack:=deadline-start]
   maxStart = max(sched[,start])
-  if(start > maxStart)
+  if(ts_start > maxStart)
     stop('Start past last task')
   
-  sliceTimes = head(seq(start, maxStart, length), n)
+  sliceTimes = head(seq(ts_start, maxStart, length), n)
   setkey(sched, e_uid)
   setkey(edges, e_uid)
 
@@ -119,29 +123,28 @@ timeslice = function(sched, vertices, edges, criticalPath,
 
     ## interior edges: entirely included in the interval
     int =
-      sched[start >= sliceTime & deadline <= nextSlice, list(e_uid, weight)]
-    int[,c('left', 'right') := list(0, weight)]
+      sched[start >= sliceTime & deadline <= nextSlice,
+            list(e_uid, weight, wslack, right=wslack)]
+    int[, left := 0]
 
     ## exterior edges: edges include interval
     ext =
       sched[start <  sliceTime & deadline >  nextSlice,
-            list(e_uid, weight, left=(sliceTime-start),
-                 right=weight-(deadline-nextSlice))]
+            list(e_uid, weight, wslack, left=sliceTime-start,
+                 right=nextSlice-start)]
 
     ## left overlap
     left =
       sched[start <  sliceTime & deadline >   sliceTime & deadline <= nextSlice,
-            list(e_uid, weight, left=(sliceTime-start))]
-    left[, right := weight]
+            list(e_uid, weight, wslack, left=sliceTime-start, right=wslack)]
     
     ## right overlap
     right =
       sched[start >= sliceTime & start < nextSlice & deadline >  nextSlice,
-            list(e_uid, weight, right=(nextSlice-start))]
+            list(e_uid, weight, wslack, right=nextSlice-start)]
     right[, left := 0]
-    setcolorder(right, names(int))
     
-    result = rbind(int, ext, left, right)
+    result = rbind(int, ext, left, right, use.names=T)
     result[weight == 0, c('left', 'right') := list(0,0)]
     ## at this point, right and left are in seconds. We want them to
     ## be fractions of the original edge weight.
@@ -155,9 +158,9 @@ timeslice = function(sched, vertices, edges, criticalPath,
 ###!depend on the type of overlap.
 
     result[weight != 0, c('frac','left','right') :=
-           list((right-left)/weight, NULL, NULL)]
+           list((right-left)/wslack, NULL, NULL)]
     result[weight == 0, frac := 0]
-    result[, weight := NULL]
+    result[, c('weight', 'wslack') := list(NULL, NULL)]
     result = edges[result][,c('weight','frac') := list(frac*weight, NULL)]
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
@@ -231,6 +234,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   for(vertex in vertices_TO$vertex){
     ##!@todo some of these columns are not used
     outEdges = edges[J(vertex), list(src, dest, e_uid, weight)]
+    if(nrow(outEdges) < 1)
+      next
     setkey(outEdges, src)
 
     ## get start times for src vertices
