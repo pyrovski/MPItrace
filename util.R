@@ -363,12 +363,20 @@ pareto = function(edges){
     if(e %% 1000 == 0)
       cat('e_uid', e, 'of', e_uid_count, '\n')
     result = edges[J(e)][order(weight, power)][!duplicated(cummin(power))]
-    result[chull(result[, list(weight, power)])]
-    ##!@todo if total variance is less than .5%, choose a single config
+
+    ##!@todo reduce configurations within .5% of each other
+    ##result = result[chull(signif(result[,list(weight,power)], 2))][order(weight, power)]
+
+    if(nrow(result) > 1){
+      ##slopes = diff(result[, power])/diff(result[, weight])
+      result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
+    }
+
     ## if(is.unsorted(result[, weight]))
     ##   stop('Pareto error: weight ', e)
     ## if(is.unsorted(rev(result[, power])))
     ##   stop('Pareto error: power ', e)
+    result
   }
   result = rbindlist(mclapply(unique(edges[, e_uid]), .pareto))
   cat('Pareto time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
