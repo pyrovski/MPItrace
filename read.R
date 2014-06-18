@@ -581,7 +581,7 @@ deps = function(x){
 
   if(debug)
     cat('Collectives\n')
-  collectives = intersect(x$name, setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
+  collectives = intersect(unique(x$name), setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
 
   setkey(x, name, comm, rank)
   for(a_coll in collectives){
@@ -595,6 +595,7 @@ deps = function(x){
       vid = max(x[row]$vertex) + 1
     }
   }
+  collectives = 1:(vid-1)
 
   ## add vertices for intra-rank stuff
   x[is.na(vertex), vertex:=vid+(0:(nrow(.SD)-1))]
@@ -609,7 +610,7 @@ deps = function(x){
 ### sink: end of communicator validity; MPI_Comm_free() or MPI_Finalize()
 ### rank: rank of caller in MPI_COMM_WORLD
 ### ranks: list of MPI_COMM_WORLD ranks participating in new communicator
-  return(list(runtimes = x, comms = commTable))
+  return(list(runtimes = x, comms = commTable, collectives=collectives))
 }
 
 messageDeps = function(x){
@@ -981,6 +982,7 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   cat('deps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   comms = b$comms
+  collectives = b$collectives ## vertex IDs
   b2 = messageDeps(b)
   cat('messageDeps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
@@ -999,12 +1001,13 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   
   result =
     list(
-      ##runtimes = b2,
-      messageEdges = g$messageEdges,
-      compEdges = g$compEdges,
-      assignments = assignments,
-      comms = comms,
-      globals=globals)
+        ##runtimes = b2,
+        messageEdges = g$messageEdges,
+        compEdges = g$compEdges,
+        assignments = assignments,
+        comms = comms,
+        globals=globals,
+        collectives = collectives)
   if(saveResult){
     with(result, save(list=ls(), file=file.path(path,name)))
     cat('save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
@@ -1012,6 +1015,8 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
     result$graph = g$graph
   if(noReturn)
     return(NULL)
-  else
-    return(result)
+  else {
+      result$runtimes = b2
+      return(result)
+  }
 }
