@@ -75,6 +75,11 @@ mergeConfs = function(conf, entries){
   for(i in 1:length(result)) result[[i]]$compEdges=NULL
   gc()
 
+  collectives = lapply(result, '[[', 'collectives')
+  names(compEdges) = lapply(result, '[[', 'date')
+  for(i in 1:length(result)) result[[i]]$collectives=NULL
+  gc()
+  
   rm(result)
  
 ### Comms should already be unified; I mapped MPI_COMM_WORLD and
@@ -118,7 +123,8 @@ mergeConfs = function(conf, entries){
   list(##runtimes=runtimes,
        assignments=assignments,
        messageEdges=messageEdges,
-       compEdges=compEdges)
+       compEdges=compEdges,
+       collectives=collectives)
 }
 
 ## combine within confCols combinations. This will combine multiple
@@ -208,6 +214,12 @@ reduceConfs = function(x){
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],by=e_uid]
 
+  x$collectives = unique(x$collectives)
+  if(length(x$collectives) > 1){
+    stop('Unmatched collectives\n')
+  }
+  x$collectives = x$collectives[[1]]
+  
   cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule)
   ##g = schedule$g
