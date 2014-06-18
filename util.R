@@ -327,32 +327,29 @@ slackEdges = function(edges, critPath){
 
 ##!@todo there has to be a better way to do this. It could be
 ##!parallelized by unique "by" groups.
-reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
-  if('flags' %in% names(x)){
-    xOMP = x[flags & flagBits$omp]
-    xNoOMP = x[!flags & flagBits$omp]
+reduceNoEffect = function(x, x_inv, measurementCols, by, invKey){
+  setkeyv(x, invKey)
+  setkeyv(x_inv, invKey)
+  if('flags' %in% names(x_inv)){
+    xOMP = x[x_inv[flags & flagBits$omp, list(s_uid)]]
+    xNoOMP = x[x_inv[!flags & flagBits$omp, list(s_uid)]]
   } else if('type' %in% names(x)){
     xNoOMP = x[type == 'message']
     xOMP = x[type != 'message']
   }
   xNoOMP[, OMP_NUM_THREADS:=1]
-  xNoOMP_unreduced = xNoOMP[, nonMeasurementCols, with=F]
-  xNoOMP = xNoOMP[, c(measurementCols, by), with=F]
   cores = getOption('mc.cores')
   if(!is.null(cores) && cores > 1){
     setkeyv(xNoOMP, by)
     u  = unique(xNoOMP[, by, with=F])
     chunks = chunk(u, nrow(u)/cores)
     rm(u)
-    xNoOMP_reduced =
+    xNoOMP =
       rbindlist(mclapply(chunks, function(ch)
                          xNoOMP[ch,lapply(.SD, mean), by=by]))
     rm(chunks)
   } else
-    xNoOMP_reduced = xNoOMP[,lapply(.SD, mean), by=by]
-  setkeyv(xNoOMP_unreduced, by)
-  setkeyv(xNoOMP_reduced, by)
-  xNoOMP = xNoOMP_unreduced[xNoOMP_reduced, mult='first']
+    xNoOMP = xNoOMP[,lapply(.SD, mean), by=by]
   rbind(xNoOMP, xOMP, use.names=T)
 }
 

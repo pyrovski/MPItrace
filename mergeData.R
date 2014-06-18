@@ -27,8 +27,10 @@ getEntryData = function(entry){
   result$date = entry$date
   for(col in confCols){
     result$compEdges[[col]] = entry[[col]]
-    if(!any(is.na(result$messageEdges)))
-      result$messageEdges[[col]] = entry[[col]]
+    ##! message edges should be unaffected. If actual message times
+    ##are ever measured, this should change.
+    ##if(!any(is.na(result$messageEdges)))
+    ##  result$messageEdges[[col]] = entry[[col]]
   }
   return(result)
 }
@@ -141,9 +143,12 @@ reduceConfs = function(x){
     x$messageEdges = NULL
   } else {
     cat('Merging message edges\n')
-    x$messageEdges = rbindlist(x$messageEdges)
+    measurementCols = c('weight')
+### this unique is ok because message weights are identical between
+### runs
+    x$messageEdges = unique(rbindlist(x$messageEdges))
     cat('Message edges:', nrow(x$messageEdges), '\n')
-    by = c('s_uid','d_uid',confCols)
+    by = c('s_uid','d_uid')
     cores = getOption('mc.cores')
     if(!is.null(cores) && cores > 1){
       setkey(x$messageEdges, s_uid)
@@ -155,16 +160,26 @@ reduceConfs = function(x){
       rm(s_uid_chunks)
     } else
       x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
-    x$messageEdges[, type:='message']
-    x$messageEdges =
-      reduceNoEffect(x$messageEdges, c('weight'),
-                     setdiff(names(x$messageEdges),
-                             c('weight')), c('s_uid','d_uid',confCols))
+    x$messageEdges_inv =
+      x$messageEdges[, setdiff(names(x$messageEdges), measurementCols), with=F]
+    x$messageEdges = x$messageEdges[, c('s_uid', 'd_uid', measurementCols), with=F]
   }
   
   cat('Computation edges\n')
-  x$compEdges = rbindlist(x$compEdges)
+  measurementCols = c('weight','power')
+  nonMeasurementCols =
+    setdiff(names(x$compEdges[[1]]), c(confCols,measurementCols))
+  ##!@todo this assumes all compEdges have the same structure
+  x$compEdges_inv =
+    x$compEdges[[1]][, nonMeasurementCols, with=F][, head(.SD, 1), by=s_uid]
+  setkey(x$compEdges_inv, s_uid)
+
+  ##!@todo this could be done in read.R
   by = c('s_uid',confCols)
+  x$compEdges =
+    rbindlist(mclapply(x$compEdges, function(compEdges)
+                       compEdges[, c(by, measurementCols), with=F]
+                       ))
   setkey(x$compEdges, s_uid)
   cores = getOption('mc.cores')
   if(!is.null(cores) && cores > 1){
@@ -176,14 +191,15 @@ reduceConfs = function(x){
     rm(s_uid_chunks)
   } else
     x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
-  x$compEdges[, type:='comp']
-  setkey(x$compEdges, d_uid)
+  setkey(x$compEdges, s_uid)
   x$compEdges =
-    reduceNoEffect(x$compEdges, c('weight','power'),
-                   setdiff(names(x$compEdges),
-                           c('weight','power')), c('s_uid','d_uid',confCols))
+    reduceNoEffect(x$compEdges, x$compEdges_inv, measurementCols,
+                   c('s_uid',confCols), 's_uid')
+  x$compEdges[, type:='comp']
 
   if(!is.null(x$messageEdges)){
+    ###!@todo fix comp and message merging, have separate inv tables now
+    x$messageEdges[, type:='message']
     commonNames = intersect(names(x$messageEdges), names(x$compEdges))
     messageOnlyNames = setdiff(commonNames, names(x$messageEdges))
     compOnlyNames = setdiff(commonNames, names(x$compEdges))
