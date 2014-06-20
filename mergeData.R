@@ -137,6 +137,12 @@ reduceConfs = function(x){
   by = c('uid',confCols)
   cat('Reducing between configs\n')
 
+  x$collectives = unique(x$collectives)
+  if(length(x$collectives) > 1){
+    stop('Unmatched collectives\n')
+  }
+  x$collectives = x$collectives[[1]]
+
   ## all message edges should be identical between runs
   if(any(is.na(x$messageEdges))){
     cat('No message edges in at least one run\n')
@@ -175,7 +181,11 @@ reduceConfs = function(x){
   setkey(x$compEdges_inv, s_uid)
 
   ##!@todo this could be done in read.R
-  by = c('s_uid',confCols)
+
+  ##!@todo d_uid is redundant for computation edges, but useful for
+  ##merging with message edges
+  
+  by = c('s_uid','d_uid',confCols)
   x$compEdges =
     rbindlist(mclapply(x$compEdges, function(compEdges)
                        compEdges[, c(by, measurementCols), with=F]
@@ -194,47 +204,64 @@ reduceConfs = function(x){
   setkey(x$compEdges, s_uid)
   x$compEdges =
     reduceNoEffect(x$compEdges, x$compEdges_inv, measurementCols,
-                   c('s_uid',confCols), 's_uid')
-  x$compEdges[, type:='comp']
+                   by, 's_uid')
+  x$compEdges_inv[, type:='comp']
 
   if(!is.null(x$messageEdges)){
     ###!@todo fix comp and message merging, have separate inv tables now
-    x$messageEdges[, type:='message']
-    commonNames = intersect(names(x$messageEdges), names(x$compEdges))
-    messageOnlyNames = setdiff(commonNames, names(x$messageEdges))
-    compOnlyNames = setdiff(commonNames, names(x$compEdges))
-    setkeyv(x$messageEdges, commonNames)
-    setkey(x$compEdges, NULL)
-    x$edges = merge(x$messageEdges, x$compEdges, all=T)
+    x$messageEdges_inv[, type:='message']
+    commonNames = intersect(names(x$messageEdges_inv), names(x$compEdges_inv))
+    messageOnlyNames = setdiff(commonNames, names(x$messageEdges_inv))
+    compOnlyNames = setdiff(commonNames, names(x$compEdges_inv))
+    setkeyv(x$messageEdges_inv, commonNames)
+    setkey(x$compEdges_inv, NULL)
+    x$edges_inv = merge(x$messageEdges_inv, x$compEdges_inv, all=T)
   } else
-    x$edges = x$compEdges
-  x$compEdges = NULL
-  x$messageEdges = NULL
-
-  ## set power to zero for message edges
-  x$edges[is.na(power), power:=0]
+    x$edges_inv = x$compEdges_inv
+  x$compEdges_inv = NULL
+  x$messageEdges_inv = NULL
 
   ## assign edge uids
-  if(!'e_uid' %in% names(x$edges)){
-    setkey(x$edges, s_uid, d_uid, type)
-    uids = x$edges[, list(e_uid=.GRP), keyby=list(s_uid, d_uid, type)]
-    e = x$edges[uids]
-    x$edges = e
+  if(!'e_uid' %in% names(x$edges_inv)){
+    setkey(x$edges_inv, s_uid, d_uid, type)
+    uids = x$edges_inv[, list(e_uid=.GRP), keyby=list(s_uid, d_uid, type)]
+    e = x$edges_inv[uids]
+    x$edges_inv = e
     rm(uids, e)
+    gc()
   }
+  ##!@todo replace s_uid/d_uid with s_uid in _inv tables as key
+  setkey(x$edges_inv, s_uid, d_uid)
+  setkey(x$compEdges, s_uid, d_uid)
+  setkey(x$messageEdges, s_uid, d_uid)
+  x$compEdges = x$compEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]
+  x$messageEdges = x$messageEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]  
+  x$compEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
+  x$messageEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
+  setkey(x$compEdges, e_uid)
+  setkey(x$messageEdges, e_uid)
+  setkey(x$edges_inv, e_uid)
   
   cat('Pareto frontiers\n')
   ## get pareto frontiers
-  x$edges = pareto(x$edges)
+  x$compEdges = pareto(x$compEdges)
+  
+### merge x$compEdges and x$messageEdges; this involves using extra
+### space for message edge configs, but makes edge lookup easier
+  messageMinConf = minConf(x$compEdges)[, confCols, with=F]
+  x$messageEdges[, confCols := messageMinConf, with=F]
+  x$messageEdges[, power := 0]
+  x$edges = rbind(x$compEdges, x$messageEdges, use.names=T)
+  x$compEdges = NULL
+  x$messageEdges = NULL
+  gc()
 
+###!@todo renumber vertices from 1:n
+  
   ## Get an initial schedule, starting with minimum time per task.
-  x$schedule = x$edges[,.SD[which.min(weight)],by=e_uid]
-
-  x$collectives = unique(x$collectives)
-  if(length(x$collectives) > 1){
-    stop('Unmatched collectives\n')
-  }
-  x$collectives = x$collectives[[1]]
+  x$schedule = x$edges[,.SD[which.min(weight)],keyby=e_uid]
+  ## get src and dest vertices
+  x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest)]]
   
   cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule)
@@ -242,17 +269,13 @@ reduceConfs = function(x){
   x$schedule = schedule$edges
   x$critPath = schedule$critPath
   x$vertices = schedule$vertices
-  rm(schedule)
-  
-  ## copy start time to edges
-  ## setkey(x$edges, e_uid)
-  ## setkey(x$schedule, e_uid)
-  ## x$edges = x$edges[x$schedule[, list(e_uid, start)]]
+  rm(schedule); gc()
 
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
   cat('Slack edges\n')
+  x$schedule = x$schedule[x$edges_inv[, list(e_uid, s_uid, d_uid)]]
   x$schedule = slackEdges(x$schedule, x$critPath)
   x$schedule[is.na(weight), weight:=0]
 
@@ -261,7 +284,6 @@ reduceConfs = function(x){
     x$schedule[is.na(s_uid),
                list(start=head(start, 1),via=-head(src, 1)), by=src]
   setnames(x$slackVertices, c('vertex', 'start', 'via'))
-  ##x$vertices = rbind(x$vertices, slackVertices)
   return(x)
 }
 

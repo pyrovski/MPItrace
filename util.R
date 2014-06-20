@@ -186,16 +186,12 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     stop('Duplicate e_uids in getSchedule\n')
   
   cat('Graph construction\n')
-  edges = data.table::copy(edges)
   setcolorder(edges,
               c('src','dest',setdiff(names(edges), c('src','dest'))))
   if(any(edges[, weight] < 0)){
     stop('Negative-weight edge(s)!')
   }
-  g =
-    graph.data.frame(edges[,c('src','dest','weight','power','e_uid',
-                              's_uid','d_uid','rank','type',
-                              confCols), with=F])
+  g = graph.data.frame(edges[,c('src','dest'), with=F])
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   cat('Topological ordering\n')
@@ -206,7 +202,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
   setkey(vertices)
   vertices_TO = data.table::copy(vertices[J(gd$vertices[ts_order])])
-  rm(gd)
+  rm(gd); gc()
 
   setkey(edges, src)
 
@@ -216,7 +212,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 
   vertices$start = -Inf
   vertices[J(1), start := 0]
-  vertices[, via:=as.numeric(NA)]
+  vertices[, via:=as.integer(NA)]
   count = 0
   progress = 0
   
@@ -232,7 +228,6 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
-    ##!@todo some of these columns are not used
     outEdges = edges[J(vertex), list(src, dest, e_uid, weight)]
     if(nrow(outEdges) < 1)
       next
@@ -287,14 +282,15 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     c_vertex = 2
     critPath = c()
     while(c_vertex != 1){
-      via = vertices[J(c_vertex), via]
+      via = vertices[J(c_vertex), 'via', with=F]
       c_vertex = edges[J(via), src, mult='first']
       critPath = c(via, critPath)
     }
   } else
     critPath=NULL
 
-  return(list(edges=edges, vertices=vertices, critPath=critPath))
+  return(list(edges=edges, vertices=vertices,
+              critPath=unname(unlist(critPath))))
 }
 
 slackEdges = function(edges, critPath){
@@ -346,6 +342,7 @@ reduceNoEffect = function(x, x_inv, measurementCols, by, invKey){
     rm(u)
     xNoOMP =
       rbindlist(mclapply(chunks, function(ch)
+                         ##!@todo fix warning
                          xNoOMP[ch,lapply(.SD, mean), by=by]))
     rm(chunks)
   } else
@@ -371,6 +368,7 @@ pareto = function(edges){
 
     if(nrow(result) > 1){
       ##slopes = diff(result[, power])/diff(result[, weight])
+###!@todo this is not sufficient; it may remove only a subset of offending points
       result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
     }
 
