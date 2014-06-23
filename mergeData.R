@@ -27,8 +27,9 @@ getEntryData = function(entry){
   result$date = entry$date
   result$compEdges[, c('src', 'dest') :=
                    list(as.integer(src), as.integer(dest))]
-  result$messageEdges[, c('src', 'dest') :=
-                   list(as.integer(src), as.integer(dest))]
+  if(!is.na(result$messageEdges))
+    result$messageEdges[, c('src', 'dest') :=
+                        list(as.integer(src), as.integer(dest))]
   for(col in confCols){
     result$compEdges[[col]] = entry[[col]]
     ##! message edges should be unaffected. If actual message times
@@ -148,6 +149,7 @@ reduceConfs = function(x){
   x$collectives = x$collectives[[1]]
 
   ## all message edges should be identical between runs
+  ##!@todo fix warning
   if(any(is.na(x$messageEdges))){
     cat('No message edges in at least one run\n')
     x$messageEdges = NULL
@@ -236,13 +238,16 @@ reduceConfs = function(x){
   ##! replace s_uid/d_uid with s_uid in _inv tables as key
   setkey(x$edges_inv, s_uid, d_uid)
   setkey(x$compEdges, s_uid, d_uid)
-  setkey(x$messageEdges, s_uid, d_uid)
   x$compEdges = x$compEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]
-  x$messageEdges = x$messageEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]  
   x$compEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
-  x$messageEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
   setkey(x$compEdges, e_uid)
-  setkey(x$messageEdges, e_uid)
+
+  if(!is.null(x$messageEdges)){
+    setkey(x$messageEdges, s_uid, d_uid)
+    x$messageEdges = x$messageEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]  
+    x$messageEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
+    setkey(x$messageEdges, e_uid)
+  }
   setkey(x$edges_inv, e_uid)
   
   cat('Pareto frontiers\n')
@@ -255,10 +260,13 @@ reduceConfs = function(x){
   
 ### merge x$compEdges and x$messageEdges; this involves using extra
 ### space for message edge configs, but makes edge lookup easier
-  messageMinConf = minConf(x$compEdges)[, confCols, with=F]
-  x$messageEdges[, confCols := messageMinConf, with=F]
-  x$messageEdges[, power := 0]
-  x$edges = rbind(x$compEdges, x$messageEdges, use.names=T)
+  if(!is.null(x$messageEdges)){
+    messageMinConf = minConf(x$compEdges)[, confCols, with=F]
+    x$messageEdges[, confCols := messageMinConf, with=F]
+    x$messageEdges[, power := 0]
+    x$edges = rbind(x$compEdges, x$messageEdges, use.names=T)
+  } else
+    x$edges = x$compEdges
   x$compEdges = NULL
   x$messageEdges = NULL
   gc()

@@ -234,7 +234,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     ## get start time for src vertex
     v = vertices[vertex, list(src=vertex, start)]
     setkey(v, src)      
-    outEdges = edges[v, list(dest, e_uid, start, weight)] # src is already included
+    outEdges = edges[v, list(src, dest, e_uid, start, weight)] # src is already included
     if(nrow(outEdges) < 1)
       next
     setkey(outEdges, src)
