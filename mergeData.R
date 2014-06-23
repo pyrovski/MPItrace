@@ -25,6 +25,8 @@ getEntryData = function(entry){
            finally=NULL)
   result = as.list(e)
   result$date = entry$date
+  result$compEdges[, c('src', 'dest') := list(as.integer(src), as.integer(dest))]
+  result$messageEdges[, c('src', 'dest') := list(as.integer(src), as.integer(dest))]
   for(col in confCols){
     result$compEdges[[col]] = entry[[col]]
     if(!any(is.na(result$messageEdges)))

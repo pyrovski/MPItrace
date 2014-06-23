@@ -216,7 +216,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 
   vertices$start = -Inf
   vertices[J(1), start := 0]
-  vertices[, via:=as.numeric(NA)]
+  vertices[, via:=as.integer(NA)]
   count = 0
   progress = 0
   
@@ -252,9 +252,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     v = vertices[v[, list(dest, start_u, e_uid)]]
     ## join on the dest vertex from v and 'vertex' from vertices
     
-    vertices[J(v[start_u > start,
-                 list(start_u, e_uid),
-                 keyby=vertex]),
+    vertices[J(v[start_u > start, list(start_u, e_uid), keyby=vertex]),
              c('start', 'via') := list(start_u, e_uid)]
     
     if(!count %% 1000){
@@ -287,9 +285,9 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     c_vertex = 2
     critPath = c()
     while(c_vertex != 1){
-      via = vertices[J(c_vertex), via]
-      c_vertex = edges[J(via), src, mult='first']
-      critPath = c(via, critPath)
+      v = vertices[J(c_vertex)][, via]
+      c_vertex = edges[J(v), src, mult='first']
+      critPath = c(v, critPath)
     }
   } else
     critPath=NULL
