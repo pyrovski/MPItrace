@@ -27,8 +27,8 @@ getEntryData = function(entry){
   result$date = entry$date
   result$compEdges[, c('src', 'dest') :=
                    list(as.integer(src), as.integer(dest))]
-  ##!@todo fix warning
-  if(!is.na(result$messageEdges))
+  ##!@todo set messageEdges to NULL in read.R if no messages
+  if(!inherits(result$messageEdges, 'logical'))
     result$messageEdges[, c('src', 'dest') :=
                         list(as.integer(src), as.integer(dest))]
   for(col in confCols){
