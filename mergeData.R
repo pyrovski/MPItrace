@@ -27,6 +27,7 @@ getEntryData = function(entry){
   result$date = entry$date
   result$compEdges[, c('src', 'dest') :=
                    list(as.integer(src), as.integer(dest))]
+  ##!@todo fix warning
   if(!is.na(result$messageEdges))
     result$messageEdges[, c('src', 'dest') :=
                         list(as.integer(src), as.integer(dest))]
@@ -149,7 +150,6 @@ reduceConfs = function(x){
   x$collectives = x$collectives[[1]]
 
   ## all message edges should be identical between runs
-  ##!@todo fix warning
   if(any(is.na(x$messageEdges))){
     cat('No message edges in at least one run\n')
     x$messageEdges = NULL
