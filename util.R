@@ -184,6 +184,9 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ### this function is intended to be called with one edge row per e_uid
   if(any(edges[, list(count=nrow(.SD)), by=e_uid]$count > 1))
     stop('Duplicate e_uids in getSchedule\n')
+
+  if(any(diff(sort(vertices[, vertex])) > 1) || !1 %in% vertices[, vertex])
+      stop('Vertices must be numbered 1:nrow(vertices)\n')
   
   cat('Graph construction\n')
   setcolorder(edges,
@@ -228,7 +231,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
-    outEdges = edges[J(vertex), list(src, dest, e_uid, weight)]
+    outEdges = edges[J(vertex), list(dest, e_uid, weight)] # src is already included
     if(nrow(outEdges) < 1)
       next
     setkey(outEdges, src)

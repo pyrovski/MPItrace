@@ -25,6 +25,10 @@ getEntryData = function(entry){
            finally=NULL)
   result = as.list(e)
   result$date = entry$date
+  result$compEdges[, c('src', 'dest') :=
+                   list(as.integer(src), as.integer(dest))]
+  result$messageEdges[, c('src', 'dest') :=
+                   list(as.integer(src), as.integer(dest))]
   for(col in confCols){
     result$compEdges[[col]] = entry[[col]]
     ##! message edges should be unaffected. If actual message times
@@ -208,7 +212,6 @@ reduceConfs = function(x){
   x$compEdges_inv[, type:='comp']
 
   if(!is.null(x$messageEdges)){
-    ###!@todo fix comp and message merging, have separate inv tables now
     x$messageEdges_inv[, type:='message']
     commonNames = intersect(names(x$messageEdges_inv), names(x$compEdges_inv))
     messageOnlyNames = setdiff(commonNames, names(x$messageEdges_inv))
@@ -230,7 +233,7 @@ reduceConfs = function(x){
     rm(uids, e)
     gc()
   }
-  ##!@todo replace s_uid/d_uid with s_uid in _inv tables as key
+  ##! replace s_uid/d_uid with s_uid in _inv tables as key
   setkey(x$edges_inv, s_uid, d_uid)
   setkey(x$compEdges, s_uid, d_uid)
   setkey(x$messageEdges, s_uid, d_uid)
@@ -256,7 +259,17 @@ reduceConfs = function(x){
   x$messageEdges = NULL
   gc()
 
-###!@todo renumber vertices from 1:n
+###! renumber vertices from 1:n
+  x$vertices = x$edges_inv[, list(vertex=union(src, dest))][order(vertex)]
+  x$vertices$newVertex = 1:nrow(x$vertices)
+  setkey(x$vertices, vertex)
+  setkey(x$edges_inv, src)
+  x$edges_inv = x$edges_inv[x$vertices]
+  x$edges_inv = x$edges_inv[, c('src', 'newVertex') := list(newVertex, NULL)]
+  setkey(x$edges_inv, dest)
+  x$edges_inv = x$edges_inv[x$vertices]
+  x$edges_inv = x$edges_inv[, c('dest', 'newVertex') := list(newVertex, NULL)]
+  x$vertices[, c('vertex', 'newVertex') := list(newVertex, NULL)]
   
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],keyby=e_uid]
@@ -264,7 +277,7 @@ reduceConfs = function(x){
   x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest)]]
   
   cat('Schedule and critical path\n')
-  schedule = getSchedule(x$schedule)
+  schedule = getSchedule(x$schedule, x$vertices)
   ##g = schedule$g
   x$schedule = schedule$edges
   x$critPath = schedule$critPath
