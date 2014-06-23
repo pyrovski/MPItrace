@@ -231,29 +231,28 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
-    outEdges = edges[J(vertex), list(dest, e_uid, weight)] # src is already included
+    ## get start time for src vertex
+    v = vertices[vertex, list(src=vertex, start)]
+    setkey(v, src)      
+    outEdges = edges[v, list(dest, e_uid, start, weight)] # src is already included
     if(nrow(outEdges) < 1)
       next
     setkey(outEdges, src)
 
-    ## get start times for src vertices
-    v = vertices[outEdges]
-
     ## get potential start times for dest vertices
-    v[, start_u:=start+weight]
+    outEdges[, c('start', 'start_u') := list(NULL, start+weight)]
 
     ## resolve cases with multiple edges between src and dest
-    v = v[, .SD[which.max(start_u)], keyby=dest]
+    outEdges = outEdges[, .SD[which.max(start_u)], keyby=dest]
     ## should now have one edge per dest in v (already have a single src)
 
     ## update start times for dest vertices
-    v = vertices[v[, list(dest, start_u, e_uid)]]
+    ##outEdges = vertices[outEdges[, list(dest, start_u, e_uid)]]
+    outEdges[, start := vertices[outEdges[,dest], list(start)]]
     ## join on the dest vertex from v and 'vertex' from vertices
-    
-    vertices[J(v[start_u > start,
-                 list(start_u, e_uid),
-                 keyby=vertex]),
-             c('start', 'via') := list(start_u, e_uid)]
+    outEdges = outEdges[start_u > start, list(dest, start_u, e_uid)]
+    setnames(outEdges, c('vertex', 'start', 'via'))
+    vertices[outEdges[,vertex], c('vertex', 'start', 'via') := outEdges]
     
     if(!count %% 1000){
       n_progress = round(count/nrow(vertices)*100)
@@ -269,10 +268,11 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!satisfied. If we want to schedule from the back, edges should
 ###!start as late as possible; for each edge:
 ###! start = vertices[J(dest), start] - weight
-  edges = edges[J(vertices[, list(vertex, start)])]
+  setkey(vertices, vertex)
+  edges = edges[vertices[, list(vertex, start)]]
  
-  if(any(edges$start == -Inf))
-    stop('Some edges not assigned a start time!\n')
+  ##if(any(edges$start == -Inf))
+  ##  stop('Some edges not assigned a start time!\n')
   cat('Start times time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 
   if(doCritPath){
@@ -282,6 +282,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!edge weights.
 
     setkey(edges, e_uid)
+    setkey(vertices, vertex)
     c_vertex = 2
     critPath = c()
     while(c_vertex != 1){

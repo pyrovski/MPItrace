@@ -175,7 +175,7 @@ reduceConfs = function(x){
     x$messageEdges = x$messageEdges[, c('s_uid', 'd_uid', measurementCols), with=F]
   }
   
-  cat('Computation edges\n')
+  cat('Computation edges:', sum(sapply(x$compEdges, nrow)), '\n')
   measurementCols = c('weight','power')
   nonMeasurementCols =
     setdiff(names(x$compEdges[[1]]), c(confCols,measurementCols))
@@ -248,6 +248,10 @@ reduceConfs = function(x){
   cat('Pareto frontiers\n')
   ## get pareto frontiers
   x$compEdges = pareto(x$compEdges)
+  gc()
+
+###!@todo split here; save and restore to get around parallel memory
+###issue
   
 ### merge x$compEdges and x$messageEdges; this involves using extra
 ### space for message edge configs, but makes edge lookup easier
@@ -274,7 +278,7 @@ reduceConfs = function(x){
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],keyby=e_uid]
   ## get src and dest vertices
-  x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest)]]
+  x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest, rank)]]
   
   cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule, x$vertices)
