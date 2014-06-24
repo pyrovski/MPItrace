@@ -286,7 +286,7 @@ reduceConfs = function(x){
   ## Get an initial schedule, starting with minimum time per task.
   x$schedule = x$edges[,.SD[which.min(weight)],keyby=e_uid]
   ## get src and dest vertices
-  x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest, rank)]]
+  x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest, rank, type)]]
   
   cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule, x$vertices)

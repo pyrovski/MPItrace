@@ -164,6 +164,8 @@ timeslice = function(sched, vertices, edges, criticalPath,
     result = edges[result][,c('weight','frac') := list(frac*weight, NULL)]
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
+    setkey(result, e_uid)
+    result = result[sched[, list(e_uid, src, dest, rank, type)]]
     return(result)
   }
 
