@@ -25,12 +25,18 @@ getEntryData = function(entry){
            finally=NULL)
   result = as.list(e)
   result$date = entry$date
-  result$compEdges[, c('src', 'dest') := list(as.integer(src), as.integer(dest))]
-  result$messageEdges[, c('src', 'dest') := list(as.integer(src), as.integer(dest))]
+  result$compEdges[, c('src', 'dest') :=
+                   list(as.integer(src), as.integer(dest))]
+  ##!@todo set messageEdges to NULL in read.R if no messages
+  if(!inherits(result$messageEdges, 'logical'))
+    result$messageEdges[, c('src', 'dest') :=
+                        list(as.integer(src), as.integer(dest))]
   for(col in confCols){
     result$compEdges[[col]] = entry[[col]]
-    if(!any(is.na(result$messageEdges)))
-      result$messageEdges[[col]] = entry[[col]]
+    ##! message edges should be unaffected. If actual message times
+    ##are ever measured, this should change.
+    ##if(!any(is.na(result$messageEdges)))
+    ##  result$messageEdges[[col]] = entry[[col]]
   }
   return(result)
 }
@@ -137,15 +143,24 @@ reduceConfs = function(x){
   by = c('uid',confCols)
   cat('Reducing between configs\n')
 
+  x$collectives = unique(x$collectives)
+  if(length(x$collectives) > 1){
+    stop('Unmatched collectives\n')
+  }
+  x$collectives = x$collectives[[1]]
+
   ## all message edges should be identical between runs
   if(any(is.na(x$messageEdges))){
     cat('No message edges in at least one run\n')
     x$messageEdges = NULL
   } else {
     cat('Merging message edges\n')
-    x$messageEdges = rbindlist(x$messageEdges)
+    measurementCols = c('weight')
+### this unique is ok because message weights are identical between
+### runs
+    x$messageEdges = unique(rbindlist(x$messageEdges))
     cat('Message edges:', nrow(x$messageEdges), '\n')
-    by = c('s_uid','d_uid',confCols)
+    by = c('s_uid','d_uid')
     cores = getOption('mc.cores')
     if(!is.null(cores) && cores > 1){
       setkey(x$messageEdges, s_uid)
@@ -157,16 +172,30 @@ reduceConfs = function(x){
       rm(s_uid_chunks)
     } else
       x$messageEdges = x$messageEdges[,lapply(.SD, mean),by=by]
-    x$messageEdges[, type:='message']
-    x$messageEdges =
-      reduceNoEffect(x$messageEdges, c('weight'),
-                     setdiff(names(x$messageEdges),
-                             c('weight')), c('s_uid','d_uid',confCols))
+    x$messageEdges_inv =
+      x$messageEdges[, setdiff(names(x$messageEdges), measurementCols), with=F]
+    x$messageEdges = x$messageEdges[, c('s_uid', 'd_uid', measurementCols), with=F]
   }
   
-  cat('Computation edges\n')
-  x$compEdges = rbindlist(x$compEdges)
-  by = c('s_uid',confCols)
+  cat('Computation edges:', sum(sapply(x$compEdges, nrow)), '\n')
+  measurementCols = c('weight','power')
+  nonMeasurementCols =
+    setdiff(names(x$compEdges[[1]]), c(confCols,measurementCols))
+  ##!@todo this assumes all compEdges have the same structure
+  x$compEdges_inv =
+    x$compEdges[[1]][, nonMeasurementCols, with=F][, head(.SD, 1), by=s_uid]
+  setkey(x$compEdges_inv, s_uid)
+
+  ##!@todo this could be done in read.R
+
+  ##!@todo d_uid is redundant for computation edges, but useful for
+  ##merging with message edges
+  
+  by = c('s_uid','d_uid',confCols)
+  x$compEdges =
+    rbindlist(mclapply(x$compEdges, function(compEdges)
+                       compEdges[, c(by, measurementCols), with=F]
+                       ))
   setkey(x$compEdges, s_uid)
   cores = getOption('mc.cores')
   if(!is.null(cores) && cores > 1){
@@ -178,67 +207,100 @@ reduceConfs = function(x){
     rm(s_uid_chunks)
   } else
     x$compEdges = x$compEdges[,lapply(.SD, mean),by=by]
-  x$compEdges[, type:='comp']
-  setkey(x$compEdges, d_uid)
+  setkey(x$compEdges, s_uid)
   x$compEdges =
-    reduceNoEffect(x$compEdges, c('weight','power'),
-                   setdiff(names(x$compEdges),
-                           c('weight','power')), c('s_uid','d_uid',confCols))
+    reduceNoEffect(x$compEdges, x$compEdges_inv, measurementCols,
+                   by, 's_uid')
+  x$compEdges_inv[, type:='comp']
 
   if(!is.null(x$messageEdges)){
-    commonNames = intersect(names(x$messageEdges), names(x$compEdges))
-    messageOnlyNames = setdiff(commonNames, names(x$messageEdges))
-    compOnlyNames = setdiff(commonNames, names(x$compEdges))
-    setkeyv(x$messageEdges, commonNames)
-    setkey(x$compEdges, NULL)
-    x$edges = merge(x$messageEdges, x$compEdges, all=T)
+    x$messageEdges_inv[, type:='message']
+    commonNames = intersect(names(x$messageEdges_inv), names(x$compEdges_inv))
+    messageOnlyNames = setdiff(commonNames, names(x$messageEdges_inv))
+    compOnlyNames = setdiff(commonNames, names(x$compEdges_inv))
+    setkeyv(x$messageEdges_inv, commonNames)
+    setkey(x$compEdges_inv, NULL)
+    x$edges_inv = merge(x$messageEdges_inv, x$compEdges_inv, all=T)
+  } else
+    x$edges_inv = x$compEdges_inv
+  x$compEdges_inv = NULL
+  x$messageEdges_inv = NULL
+
+  ## assign edge uids
+  if(!'e_uid' %in% names(x$edges_inv)){
+    setkey(x$edges_inv, s_uid, d_uid, type)
+    uids = x$edges_inv[, list(e_uid=.GRP), keyby=list(s_uid, d_uid, type)]
+    e = x$edges_inv[uids]
+    x$edges_inv = e
+    rm(uids, e)
+    gc()
+  }
+  ##! replace s_uid/d_uid with s_uid in _inv tables as key
+  setkey(x$edges_inv, s_uid, d_uid)
+  setkey(x$compEdges, s_uid, d_uid)
+  x$compEdges = x$compEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]
+  x$compEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
+  setkey(x$compEdges, e_uid)
+
+  if(!is.null(x$messageEdges)){
+    setkey(x$messageEdges, s_uid, d_uid)
+    x$messageEdges = x$messageEdges[x$edges_inv[,list(s_uid, d_uid, e_uid)]]  
+    x$messageEdges[, c('s_uid','d_uid') := list(NULL, NULL)]
+    setkey(x$messageEdges, e_uid)
+  }
+  setkey(x$edges_inv, e_uid)
+  
+  cat('Pareto frontiers\n')
+  ## get pareto frontiers
+  x$compEdges = pareto(x$compEdges)
+  gc()
+
+###!@todo split here; save and restore to get around parallel memory
+###issue
+  
+### merge x$compEdges and x$messageEdges; this involves using extra
+### space for message edge configs, but makes edge lookup easier
+  if(!is.null(x$messageEdges)){
+    messageMinConf = minConf(x$compEdges)[, confCols, with=F]
+    x$messageEdges[, confCols := messageMinConf, with=F]
+    x$messageEdges[, power := 0]
+    x$edges = rbind(x$compEdges, x$messageEdges, use.names=T)
   } else
     x$edges = x$compEdges
   x$compEdges = NULL
   x$messageEdges = NULL
+  gc()
 
-  ## set power to zero for message edges
-  x$edges[is.na(power), power:=0]
-
-  ## assign edge uids
-  if(!'e_uid' %in% names(x$edges)){
-    setkey(x$edges, s_uid, d_uid, type)
-    uids = x$edges[, list(e_uid=.GRP), keyby=list(s_uid, d_uid, type)]
-    e = x$edges[uids]
-    x$edges = e
-    rm(uids, e)
-  }
+###! renumber vertices from 1:n
+  x$vertices = x$edges_inv[, list(vertex=union(src, dest))][order(vertex)]
+  x$vertices$newVertex = 1:nrow(x$vertices)
+  setkey(x$vertices, vertex)
+  setkey(x$edges_inv, src)
+  x$edges_inv = x$edges_inv[x$vertices]
+  x$edges_inv = x$edges_inv[, c('src', 'newVertex') := list(newVertex, NULL)]
+  setkey(x$edges_inv, dest)
+  x$edges_inv = x$edges_inv[x$vertices]
+  x$edges_inv = x$edges_inv[, c('dest', 'newVertex') := list(newVertex, NULL)]
+  x$vertices[, c('vertex', 'newVertex') := list(newVertex, NULL)]
   
-  cat('Pareto frontiers\n')
-  ## get pareto frontiers
-  x$edges = pareto(x$edges)
-
   ## Get an initial schedule, starting with minimum time per task.
-  x$schedule = x$edges[,.SD[which.min(weight)],by=e_uid]
-
-  x$collectives = unique(x$collectives)
-  if(length(x$collectives) > 1){
-    stop('Unmatched collectives\n')
-  }
-  x$collectives = x$collectives[[1]]
+  x$schedule = x$edges[,.SD[which.min(weight)],keyby=e_uid]
+  ## get src and dest vertices
+  x$schedule = x$schedule[x$edges_inv[, list(e_uid, src, dest, rank, type)]]
   
   cat('Schedule and critical path\n')
-  schedule = getSchedule(x$schedule)
+  schedule = getSchedule(x$schedule, x$vertices)
   ##g = schedule$g
   x$schedule = schedule$edges
   x$critPath = schedule$critPath
   x$vertices = schedule$vertices
-  rm(schedule)
-  
-  ## copy start time to edges
-  ## setkey(x$edges, e_uid)
-  ## setkey(x$schedule, e_uid)
-  ## x$edges = x$edges[x$schedule[, list(e_uid, start)]]
+  rm(schedule); gc()
 
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
   cat('Slack edges\n')
+  x$schedule = x$schedule[x$edges_inv[, list(e_uid, s_uid, d_uid)]]
   x$schedule = slackEdges(x$schedule, x$critPath)
   x$schedule[is.na(weight), weight:=0]
 
@@ -247,11 +309,11 @@ reduceConfs = function(x){
     x$schedule[is.na(s_uid),
                list(start=head(start, 1),via=-head(src, 1)), by=src]
   setnames(x$slackVertices, c('vertex', 'start', 'via'))
-  ##x$vertices = rbind(x$vertices, slackVertices)
   return(x)
 }
 
 writeSlices = function(x, sliceDir='csv'){
+  dir.create(sliceDir)
   options(scipen=7)
   firstCols = c('e_uid', confCols)
   confName = gsub('[/.]', '_', x$key)
@@ -372,11 +434,6 @@ go = function(){
     minPower = min(reduced$edges[power > 0, power]) * entry$ranks
     cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
-    cat(entry$key, 'Writing timeslices\n')
-    writeSlices(reduced)
-    cat(entry$key, 'Done writing timeslices\n')
-    cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    startTime = Sys.time()
     cat(entry$key, 'Saving\n')
     save(measurementCols, reduced, entrySpace, countedEntryspace,
          entryCols, entries, confSpace, confCols,
@@ -384,6 +441,11 @@ go = function(){
          file=filename)
     cat(entry$key, 'Done saving\n')
     cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    startTime = Sys.time()
+    cat(entry$key, 'Writing timeslices\n')
+    writeSlices(reduced)
+    cat(entry$key, 'Done writing timeslices\n')
+    cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     ##return(reduced)
   }
   setkeyv(entries, entryCols)

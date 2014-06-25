@@ -164,6 +164,8 @@ timeslice = function(sched, vertices, edges, criticalPath,
     result = edges[result][,c('weight','frac') := list(frac*weight, NULL)]
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
+    setkey(result, e_uid)
+    result = result[sched[, list(e_uid, src, dest, rank, type)]]
     return(result)
   }
 
@@ -184,18 +186,17 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ### this function is intended to be called with one edge row per e_uid
   if(any(edges[, list(count=nrow(.SD)), by=e_uid]$count > 1))
     stop('Duplicate e_uids in getSchedule\n')
+
+  if(any(diff(sort(vertices[, vertex])) > 1) || !1 %in% vertices[, vertex])
+      stop('Vertices must be numbered 1:nrow(vertices)\n')
   
   cat('Graph construction\n')
-  edges = data.table::copy(edges)
   setcolorder(edges,
               c('src','dest',setdiff(names(edges), c('src','dest'))))
   if(any(edges[, weight] < 0)){
     stop('Negative-weight edge(s)!')
   }
-  g =
-    graph.data.frame(edges[,c('src','dest','weight','power','e_uid',
-                              's_uid','d_uid','rank','type',
-                              confCols), with=F])
+  g = graph.data.frame(edges[,c('src','dest'), with=F])
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   gd$vertices$name = as.numeric(gd$vertices$name)
   cat('Topological ordering\n')
@@ -206,7 +207,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
   setkey(vertices)
   vertices_TO = data.table::copy(vertices[J(gd$vertices[ts_order])])
-  rm(gd)
+  rm(gd); gc()
 
   setkey(edges, src)
 
@@ -232,28 +233,28 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   
 ###!@todo using an LP solver for this would be way faster
   for(vertex in vertices_TO$vertex){
-    ##!@todo some of these columns are not used
-    outEdges = edges[J(vertex), list(src, dest, e_uid, weight)]
+    ## get start time for src vertex
+    v = vertices[vertex, list(src=vertex, start)]
+    setkey(v, src)      
+    outEdges = edges[v, list(src, dest, e_uid, start, weight)] # src is already included
     if(nrow(outEdges) < 1)
       next
     setkey(outEdges, src)
 
-    ## get start times for src vertices
-    v = vertices[outEdges]
-
     ## get potential start times for dest vertices
-    v[, start_u:=start+weight]
+    outEdges[, c('start', 'start_u') := list(NULL, start+weight)]
 
     ## resolve cases with multiple edges between src and dest
-    v = v[, .SD[which.max(start_u)], keyby=dest]
+    outEdges = outEdges[, .SD[which.max(start_u)], keyby=dest]
     ## should now have one edge per dest in v (already have a single src)
 
     ## update start times for dest vertices
-    v = vertices[v[, list(dest, start_u, e_uid)]]
+    ##outEdges = vertices[outEdges[, list(dest, start_u, e_uid)]]
+    outEdges[, start := vertices[outEdges[,dest], list(start)]]
     ## join on the dest vertex from v and 'vertex' from vertices
-    
-    vertices[J(v[start_u > start, list(start_u, e_uid), keyby=vertex]),
-             c('start', 'via') := list(start_u, e_uid)]
+    outEdges = outEdges[start_u > start, list(dest, start_u, e_uid)]
+    setnames(outEdges, c('vertex', 'start', 'via'))
+    vertices[outEdges[,vertex], c('vertex', 'start', 'via') := outEdges]
     
     if(!count %% 1000){
       n_progress = round(count/nrow(vertices)*100)
@@ -269,10 +270,11 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!satisfied. If we want to schedule from the back, edges should
 ###!start as late as possible; for each edge:
 ###! start = vertices[J(dest), start] - weight
-  edges = edges[J(vertices[, list(vertex, start)])]
+  setkey(vertices, vertex)
+  edges = edges[vertices[, list(vertex, start)]]
  
-  if(any(edges$start == -Inf))
-    stop('Some edges not assigned a start time!\n')
+  ##if(any(edges$start == -Inf))
+  ##  stop('Some edges not assigned a start time!\n')
   cat('Start times time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 
   if(doCritPath){
@@ -282,6 +284,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!edge weights.
 
     setkey(edges, e_uid)
+    setkey(vertices, vertex)
     c_vertex = 2
     critPath = c()
     while(c_vertex != 1){
@@ -292,7 +295,8 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   } else
     critPath=NULL
 
-  return(list(edges=edges, vertices=vertices, critPath=critPath))
+  return(list(edges=edges, vertices=vertices,
+              critPath=unname(unlist(critPath))))
 }
 
 slackEdges = function(edges, critPath){
@@ -325,32 +329,30 @@ slackEdges = function(edges, critPath){
 
 ##!@todo there has to be a better way to do this. It could be
 ##!parallelized by unique "by" groups.
-reduceNoEffect = function(x, measurementCols, nonMeasurementCols, by){
-  if('flags' %in% names(x)){
-    xOMP = x[flags & flagBits$omp]
-    xNoOMP = x[!flags & flagBits$omp]
+reduceNoEffect = function(x, x_inv, measurementCols, by, invKey){
+  setkeyv(x, invKey)
+  setkeyv(x_inv, invKey)
+  if('flags' %in% names(x_inv)){
+    xOMP = x[x_inv[flags & flagBits$omp, list(s_uid)]]
+    xNoOMP = x[x_inv[!flags & flagBits$omp, list(s_uid)]]
   } else if('type' %in% names(x)){
     xNoOMP = x[type == 'message']
     xOMP = x[type != 'message']
   }
   xNoOMP[, OMP_NUM_THREADS:=1]
-  xNoOMP_unreduced = xNoOMP[, nonMeasurementCols, with=F]
-  xNoOMP = xNoOMP[, c(measurementCols, by), with=F]
   cores = getOption('mc.cores')
   if(!is.null(cores) && cores > 1){
     setkeyv(xNoOMP, by)
     u  = unique(xNoOMP[, by, with=F])
     chunks = chunk(u, nrow(u)/cores)
     rm(u)
-    xNoOMP_reduced =
+    xNoOMP =
       rbindlist(mclapply(chunks, function(ch)
+                         ##!@todo fix warning
                          xNoOMP[ch,lapply(.SD, mean), by=by]))
     rm(chunks)
   } else
-    xNoOMP_reduced = xNoOMP[,lapply(.SD, mean), by=by]
-  setkeyv(xNoOMP_unreduced, by)
-  setkeyv(xNoOMP_reduced, by)
-  xNoOMP = xNoOMP_unreduced[xNoOMP_reduced, mult='first']
+    xNoOMP = xNoOMP[,lapply(.SD, mean), by=by]
   rbind(xNoOMP, xOMP, use.names=T)
 }
 
@@ -372,6 +374,7 @@ pareto = function(edges){
 
     if(nrow(result) > 1){
       ##slopes = diff(result[, power])/diff(result[, weight])
+###!@todo this is not sufficient; it may remove only a subset of offending points
       result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
     }
 
