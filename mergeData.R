@@ -313,6 +313,7 @@ reduceConfs = function(x){
 }
 
 writeSlices = function(x, sliceDir='csv'){
+  dir.create(sliceDir)
   options(scipen=7)
   firstCols = c('e_uid', confCols)
   confName = gsub('[/.]', '_', x$key)
@@ -433,11 +434,6 @@ go = function(){
     minPower = min(reduced$edges[power > 0, power]) * entry$ranks
     cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
-    cat(entry$key, 'Writing timeslices\n')
-    writeSlices(reduced)
-    cat(entry$key, 'Done writing timeslices\n')
-    cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    startTime = Sys.time()
     cat(entry$key, 'Saving\n')
     save(measurementCols, reduced, entrySpace, countedEntryspace,
          entryCols, entries, confSpace, confCols,
@@ -445,6 +441,11 @@ go = function(){
          file=filename)
     cat(entry$key, 'Done saving\n')
     cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    startTime = Sys.time()
+    cat(entry$key, 'Writing timeslices\n')
+    writeSlices(reduced)
+    cat(entry$key, 'Done writing timeslices\n')
+    cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     ##return(reduced)
   }
   setkeyv(entries, entryCols)
