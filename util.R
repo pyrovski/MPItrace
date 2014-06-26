@@ -1,3 +1,4 @@
+##!@todo finish
 mcdtby = function(x, chunkBy, by, f, SDcols='all'){
   cores = getOption('mc.cores')
   if(length(chunkBy) != 1)
@@ -299,6 +300,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
               critPath=unname(unlist(critPath))))
 }
 
+##!@todo this is now the longest-running stage
 slackEdges = function(edges, critPath){
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power
