@@ -301,7 +301,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 }
 
 ##!@todo this is now the longest-running stage
-slackEdges = function(schedule, lowPowerEdges, critPath){
+slackEdges = function(schedule, activeWaitConf, critPath){
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power.
 
@@ -309,9 +309,6 @@ slackEdges = function(schedule, lowPowerEdges, critPath){
 ###wait config for all edge uids
 
   setkey(schedule, e_uid)
-  setkey(lowPowerEdges, e_uid)
-  if(!identical(schedule[, e_uid], lowPowerEdges[, e_uid]))
-    stop('schedule and lowPowerEdges should contain one row per e_uid\n')
   critEdgeIndices = schedule[J(critPath), which=T]
   ##nonCritEdge_UIDs = setdiff(unique(schedule[, e_uid]), critPath)
   nonCritEdgeIndices = setdiff(1:nrow(schedule), schedule[J(critPath),which=T])
@@ -324,6 +321,8 @@ slackEdges = function(schedule, lowPowerEdges, critPath){
     origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
     slackEdges[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
                list(-e_uid, -e_uid, NA, NA, start + weight)]
+    ##slackEdges[, c(confCols, 'power', 'weight') := activeWaitConf]
+    for(col in names(activeWaitConf)) slackEdges[[col]] = activeWaitConf[[col]]
     result = rbindlist(list(schedule[critEdgeIndices], origEdges, slackEdges))
     return(result)
   } else
