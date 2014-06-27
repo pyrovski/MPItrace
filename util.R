@@ -301,32 +301,30 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 }
 
 ##!@todo this is now the longest-running stage
-slackEdges = function(edges, critPath){
+slackEdges = function(schedule, lowPowerEdges, critPath){
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power
 
-  setkey(edges, e_uid)
-  ##  cols = setdiff(names(edges), confCols)
-  ##nonCritEdges = edges[!J(critPath)]
-  nonCritEdge_UIDs = setdiff(unique(edges[, e_uid]), critPath)
-  critEdges = edges[J(critPath)]
+  setkey(schedule, e_uid)
+  setkey(lowPowerEdges, e_uid)
+  if(!identical(schedule[, e_uid], lowPowerEdges[, e_uid]))
+    stop('schedule and lowPowerEdges should contain one row per e_uid\n')
+  critEdgeIndices = schedule[J(critPath), which=T]
+  ##nonCritEdge_UIDs = setdiff(unique(schedule[, e_uid]), critPath)
+  nonCritEdgeIndices = setdiff(1:nrow(schedule), schedule[J(critPath),which=T])
 
   ## for LP purposes, 0 is equivalent to NA for power. Weight must be
   ## treated differently.
-  f = function(u){
-    confs = edges[J(u)]
-    slack = confs[which.min(power)]
-    confs[, c('dest', 'd_uid') := list(-e_uid, NA)]
-    slack[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
-          list(-e_uid, -e_uid, NA, NA, start + weight)]
-    rbind(confs, slack)
-  }
-  if(length(nonCritEdge_UIDs)){
-    nonCritEdges = rbindlist(mclapply(nonCritEdge_UIDs, f))
-    result = rbind(critEdges, nonCritEdges)
+  if(length(nonCritEdgeIndices)){
+    origEdges = schedule[nonCritEdgeIndices]
+    slackEdges = origEdges
+    origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
+    slackEdges[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
+               list(-e_uid, -e_uid, NA, NA, start + weight)]
+    result = rbindlist(list(schedule[critEdgeIndices], origEdges, slackEdges))
+    return(result)
   } else
-    result = critEdges
-  return(result)
+    return(schedule)
 }
 
 ##!@todo there has to be a better way to do this. It could be

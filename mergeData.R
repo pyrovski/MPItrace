@@ -300,8 +300,11 @@ reduceConfs = function(x){
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
   cat('Slack edges\n')
+  startTime = Sys.time()
   x$schedule = x$schedule[x$edges_inv[, list(e_uid, s_uid, d_uid)]]
-  x$schedule = slackEdges(x$schedule, x$critPath)
+  lowPowerEdges = x$edges[, .SD[which.min(power)], by=e_uid]
+  x$schedule = slackEdges(x$schedule, lowPowerEdges, x$critPath)
+  rm(lowPowerEdges)
   x$schedule[is.na(weight), weight:=0]
 
   ## add slack vertices to vertices table
@@ -309,6 +312,7 @@ reduceConfs = function(x){
     x$schedule[is.na(s_uid),
                list(start=head(start, 1),via=-head(src, 1)), by=src]
   setnames(x$slackVertices, c('vertex', 'start', 'via'))
+  cat(x$key, 'Slack time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(x)
 }
 
