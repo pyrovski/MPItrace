@@ -303,7 +303,10 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ##!@todo this is now the longest-running stage
 slackEdges = function(schedule, lowPowerEdges, critPath){
 ###!For now, we use the minimum power recorded in any run as active
-###!wait power
+###!wait power.
+
+###!@todo get a measurement for active wait power and set an active
+###wait config for all edge uids
 
   setkey(schedule, e_uid)
   setkey(lowPowerEdges, e_uid)
