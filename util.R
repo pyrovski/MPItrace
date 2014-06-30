@@ -375,9 +375,20 @@ pareto = function(edges){
     ##result = result[chull(signif(result[,list(weight,power)], 2))][order(weight, power)]
 
     if(nrow(result) > 1){
+      maxWeight = tail(result, 1)[, weight]
+      maxPower = max(result[, power])
+      result = rbind(result[1], result)
+      result[1, c('weight','power') := list(1.01 * maxWeight, 1.01 * maxPower)]
+      result = result[m_chull(weight, power)]
+      ## if(debug){
+      ##   maxPower = max(result[, power])
+      ##   if(tail(result, 1)[, power] != maxPower)
+      ##     stop('incorrect assumption\n')
+      ## }
+      return(head(result, -1))
       ##slopes = diff(result[, power])/diff(result[, weight])
 ###!@todo this is not sufficient; it may remove only a subset of offending points
-      result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
+      ##result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
     }
 
     ## if(is.unsorted(result[, weight]))
@@ -397,4 +408,12 @@ chunk = function(d, n){
 ##    lapply(split(1:nrow(d), ceiling(seq_along(d)/n)), function(s) d[s])
 ##  } else
   split(d, ceiling(seq_along(d)/n))
+}
+
+m_chull = function(x, y){
+  x <- cbind(x, y)
+  if (nrow(x) == 1)
+    return(1L)
+  res <- .Call(grDevices:::C_chull, x)
+  return(res)
 }
