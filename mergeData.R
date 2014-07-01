@@ -302,7 +302,7 @@ reduceConfs = function(x){
   cat('Slack edges\n')
   startTime = Sys.time()
   x$schedule = x$schedule[x$edges_inv[, list(e_uid, s_uid, d_uid)]]
-  activeWaitConf = x$edges[power > 0][which.min(power), c(confCols, 'power')]
+  activeWaitConf = x$edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
   activeWaitConf$weight = as.numeric(NA)
   x$schedule = slackEdges(x$schedule, activeWaitConf, x$critPath)
   x$schedule[is.na(weight), weight:=0]

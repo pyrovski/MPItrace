@@ -170,7 +170,7 @@ timeslice = function(sched, vertices, edges, criticalPath,
     return(result)
   }
 
-  result = nnapply(sliceTimes, f)
+  result = nnapply(sliceTimes, f, mc=T)
   result
 }
 
@@ -317,7 +317,7 @@ slackEdges = function(schedule, activeWaitConf, critPath){
   ## treated differently.
   if(length(nonCritEdgeIndices)){
     origEdges = schedule[nonCritEdgeIndices]
-    slackEdges = origEdges
+    slackEdges = data.table::copy(origEdges)
     origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
     slackEdges[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
                list(-e_uid, -e_uid, NA, NA, start + weight)]
