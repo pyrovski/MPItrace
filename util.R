@@ -112,6 +112,8 @@ timeslice = function(sched, vertices, edges, criticalPath,
   maxStart = max(sched[,start])
   if(ts_start > maxStart)
     stop('Start past last task')
+
+  ranks = unique(sched[, rank])
   
   sliceTimes = head(seq(ts_start, maxStart, length), n)
   setkey(sched, e_uid)
@@ -124,24 +126,24 @@ timeslice = function(sched, vertices, edges, criticalPath,
 
     ## interior edges: entirely included in the interval
     int =
-      sched[start >= sliceTime & deadline <= nextSlice,
+      sched[start >= sliceTime & deadline < nextSlice,
             list(e_uid, weight, wslack, right=wslack)]
     int[, left := 0]
 
     ## exterior edges: edges include interval
     ext =
-      sched[start <  sliceTime & deadline >  nextSlice,
+      sched[start <  sliceTime & deadline >= nextSlice,
             list(e_uid, weight, wslack, left=sliceTime-start,
                  right=nextSlice-start)]
 
     ## left overlap
     left =
-      sched[start <  sliceTime & deadline >   sliceTime & deadline <= nextSlice,
+      sched[start < sliceTime & deadline > sliceTime & deadline < nextSlice,
             list(e_uid, weight, wslack, left=sliceTime-start, right=wslack)]
     
     ## right overlap
     right =
-      sched[start >= sliceTime & start < nextSlice & deadline >  nextSlice,
+      sched[start >= sliceTime & start < nextSlice & deadline >= nextSlice,
             list(e_uid, weight, wslack, right=nextSlice-start)]
     right[, left := 0]
     
@@ -162,11 +164,20 @@ timeslice = function(sched, vertices, edges, criticalPath,
            list((right-left)/wslack, NULL, NULL)]
     result[weight == 0, frac := 0]
     result[, c('weight', 'wslack') := list(NULL, NULL)]
-    result = edges[result][,c('weight','frac') := list(frac*weight, NULL)]
+    setkey(result, e_uid)
+    if(any(result[, e_uid] < 0)){
+      result =
+        rbind(edges[result[e_uid > 0]], sched[, names(edges), with=F][result[e_uid < 0]])
+    } else
+      result = edges[result]
+    result[,c('weight','frac') := list(frac*weight, NULL)]
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
     setkey(result, e_uid)
     result = result[sched[, list(e_uid, src, dest, rank, type)]]
+    if(any(!ranks %in% unique(result[, rank]))){
+      stop('every rank should have an edge in every timeslice\n')
+    }
     return(result)
   }
 
