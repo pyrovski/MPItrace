@@ -32,8 +32,13 @@ readEntry = function(filename){
 }
 
 mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
-  
   entries <<- lapply(inList, readEntry)
+  errors <<- sapply(entries, is.null)
+  #errorFiles <<- inList[errors]
+  entries <<- entries[!errors]
+  lengths <<- sapply(entries, length)
+  errors <<- lengths < max(lengths)
+  entries <<- entries[!errors]
   classes <<- unique(rbindlist(lapply(entries,
     function(entry)
     as.data.frame(cbind(name = names(entry),
@@ -53,10 +58,10 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
   entries[, ranksPerNode:=ceiling(ranks/SLURM_NNODES)]
   entries[, SLURM_NNODES:=NULL]
   
-  entryCols =
+  entryCols <<-
     intersect(c('ranksPerNode','ranks','command'),
               names(entries))
-  confCols =
+  confCols <<-
     intersect(
       c('OMP_NUM_THREADS', ## number of OpenMP threads
         'cpuFreq'          ## static CPU frequency in kHz
@@ -90,3 +95,4 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
 
 if(!interactive())
   mergeEntries()
+##mergeEntries(readLines('entries'), 'mergedEntries.Rsave')
