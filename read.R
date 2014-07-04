@@ -798,7 +798,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
     sel = x[rank == r & is.na(name), which=T]
     result =
       cbind(x[sel, list(weight=duration,
-                        power=pkg_w+pp0_w+dram_w,s_uid=uid,flags)],
+                        power=pkg_w+dram_w,s_uid=uid,flags)],
             x[sel-1,list(src=vertex)],
             x[sel+1,list(dest=vertex, d_uid=uid)])
     result[, rank:=r]
