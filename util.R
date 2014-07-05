@@ -46,8 +46,8 @@ powerTime = function(edges){
     ##[order(start)]
     o = order(edges[,start])
     edges = edges[o]
-    times=edges[, start]
-    powers = f(edges[, power])
+    times = edges[, start]
+    powers = c(0, edges[, power])
     steps = stepfun(x=times, y=powers)
     list(times=times,
          ##powers=powers,
@@ -105,7 +105,10 @@ powerStats = function(edges, edges_inv){
          minPower = powersMinPower)
   nnapply(names(result), function(name){
     r = result[[name]]
-    pdf(); s = stepfun(r[[1]], c(r[[2]], 0)); plot(s, main=name); dev.off()
+    pdf(file=paste(name, '.pdf', sep=''))
+    s = stepfun(r[[1]], c(r[[2]], 0))
+    plot(s, main=name)
+    dev.off()
     })
   return(result)
 }
