@@ -379,10 +379,9 @@ writeSlices = function(x, sliceDir='csv'){
     ##!edges. Alternatively, the timeslice time can just depend on all
     ##!tasks.
     write.table(
-      x$schedule[e_uid %in% slice[,e_uid]][type %in% c('comp', 'slack'),
-                                           .SD[which.max(start)],
-                                           by=rank][,list(rank, last_edge=e_uid)],
-      file=file.path(sliceDir, paste(sliceName, '.last_edges.csv', sep='')),
+      slice[, .SD[which.max(start)], .SDcols=c('start', 'dest'),
+            by=rank][,list(rank, last_vertex=dest)],
+      file=file.path(sliceDir, paste(sliceName, '.last_vertices.csv', sep='')),
       row.names=F, quote=F, sep=',')
   }
   mclapply(names(slices), function(sliceTime) writeSlice(slices[[sliceTime]], sliceTime))
