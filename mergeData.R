@@ -325,6 +325,8 @@ writeSlices = function(x, sliceDir='csv'){
 ###!@todo this would use less memory if we computed one slice at a time
   slices = timeslice(x$schedule, rbind(x$vertices, x$slackVertices), x$edges)
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
+  schedVertices = rbind(x$vertices, x$slackVertices)
+  setkey(schedVertices, vertex)
   writeSlice = function(slice, sliceTime){
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
@@ -378,11 +380,14 @@ writeSlices = function(x, sliceDir='csv'){
     ##!choosing computation or slack edges, but not message
     ##!edges. Alternatively, the timeslice time can just depend on all
     ##!tasks.
+    lastVertices =
+      schedVertices[slice[,list(dest, rank)]][, .SD[which.max(start)],
+                                              .SDcols=c('start', 'vertex'),
+                                              by=rank]
+    setnames(lastVertices, 'vertex', 'last_vertex')
     write.table(
-      x$schedule[e_uid %in% slice[,e_uid]][type %in% c('comp', 'slack'),
-                                           .SD[which.max(start)],
-                                           by=rank][,list(rank, last_edge=e_uid)],
-      file=file.path(sliceDir, paste(sliceName, '.last_edges.csv', sep='')),
+      lastVertices[, list(rank, last_vertex)],
+      file=file.path(sliceDir, paste(sliceName, '.last_vertices.csv', sep='')),
       row.names=F, quote=F, sep=',')
   }
   mclapply(names(slices), function(sliceTime) writeSlice(slices[[sliceTime]], sliceTime))
