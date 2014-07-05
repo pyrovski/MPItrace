@@ -68,27 +68,46 @@ powerTime = function(edges){
   return(powers)
 }
 
-powerStats = function(edges){
+powerStats = function(edges, edges_inv){
 ### need to assign start times for each set
 
+  activeWaitConf = edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
+  activeWaitConf$weight = as.numeric(NA)
+
+  setkey(edges, e_uid)
+  setkey(edges_inv, e_uid)
+  
   ##fastest
-  sched = getSchedule(edges[,.SD[which.min(weight)],by=e_uid])
-  sched = slackEdges(sched$edges, sched$critPath)
+  e = edges[,.SD[which.min(weight)],by=e_uid]
+  e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
+  sched = getSchedule(e)
+
+  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
   powersMinTime = powerTime(sched)
   
   ## max power
-  sched = getSchedule(edges[,.SD[which.max(power)],by=e_uid])
-  sched = slackEdges(sched$edges, sched$critPath)
+  e = edges[,.SD[which.max(power)],by=e_uid]
+  e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
+  sched = getSchedule(e)
+  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
   powersMaxPower = powerTime(sched)
 
   ## min power
-  sched = getSchedule(edges[,.SD[which.min(power)],by=e_uid])
-  sched = slackEdges(sched$edges, sched$critPath)
+  e = edges[,.SD[which.min(power)],by=e_uid]
+  e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
+  sched = getSchedule(e)
+  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
   powersMinPower = powerTime(sched)
 
-  list(minTime  = powersMinTime,
-       maxPower = powersMaxPower,
-       minPower = powersMinPower)
+  result =
+    list(minTime  = powersMinTime,
+         maxPower = powersMaxPower,
+         minPower = powersMinPower)
+  nnapply(names(result), function(name){
+    r = result[[name]]
+    pdf(); s = stepfun(r[[1]], c(r[[2]], 0)); plot(s, main=name); dev.off()
+    })
+  return(result)
 }
 
 ## return sets of indices for each timeslice and how much of each task
@@ -160,8 +179,10 @@ timeslice = function(sched, vertices, edges, criticalPath,
 ###!are in the timeslice, then determine their splits. Possible splits
 ###!depend on the type of overlap.
 
-    result[weight != 0, c('frac','left','right') :=
-           list((right-left)/wslack, NULL, NULL)]
+    ##,'left','right'
+    ##, NULL, NULL
+    result[weight != 0, c('frac', 'left', 'right') :=
+           list((right-left)/wslack, left/wslack, right/wslack)]
     result[weight == 0, frac := 0]
     result[, c('weight', 'wslack') := list(NULL, NULL)]
     setkey(result, e_uid)
@@ -170,7 +191,7 @@ timeslice = function(sched, vertices, edges, criticalPath,
         rbind(edges[result[e_uid > 0]], sched[, names(edges), with=F][result[e_uid < 0]])
     } else
       result = edges[result]
-    result[,c('weight','frac') := list(frac*weight, NULL)]
+    result[,c('weight', 'frac') := list(frac*weight, NULL)]
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
     setkey(result, e_uid)

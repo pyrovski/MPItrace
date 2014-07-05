@@ -356,7 +356,9 @@ writeSlices = function(x, sliceDir='csv'){
       minTime=min(weight),
       maxTime=max(weight),
       minPower=min(power),
-      maxPower=max(power)),
+      maxPower=max(power),
+      left=head(left,1),
+      right=head(right,1)),
                       by=e_uid],
                 file=file.path(sliceDir, paste(sliceName, '.edges.csv', sep='')),
                 row.names=F, quote=F, sep=',')
