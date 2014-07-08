@@ -187,14 +187,15 @@ timeslice = function(sched, vertices, edges, criticalPath,
     result[weight != 0, c('frac', 'left', 'right') :=
            list((right-left)/wslack, left/wslack, right/wslack)]
     result[weight == 0, frac := 0]
-    result[, c('weight', 'wslack') := list(NULL, NULL)]
+    ##, 'wslack'
+    result[, c('weight') := list(NULL)]
     setkey(result, e_uid)
     if(any(result[, e_uid] < 0)){
       result =
         rbind(edges[result[e_uid > 0]], sched[, names(edges), with=F][result[e_uid < 0]])
     } else
       result = edges[result]
-    result[,c('weight', 'frac') := list(frac*weight, NULL)]
+    result[,c('weight', 'oWeight', 'frac') := list(frac*weight, weight, NULL)]
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
     setkey(result, e_uid)
