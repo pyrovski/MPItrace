@@ -328,6 +328,7 @@ writeSlices = function(x, sliceDir='csv'){
   schedVertices = rbind(x$vertices, x$slackVertices)
   setkey(schedVertices, vertex)
   writeSlice = function(slice, sliceTime){
+    setkey(slice, e_uid)
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
 
@@ -345,10 +346,6 @@ writeSlices = function(x, sliceDir='csv'){
     write.table(slice[,list(vertex=union(src,dest))],
                 file=file.path(sliceDir, paste(sliceName, '.vertices.csv', sep='')),
                 row.names=F, quote=F, sep=',')
-
-###!@todo for dependent timeslices, only output one configuration for
-###!the first computation edge on each rank. This configuration should
-###!come from the previous timeslice solution.
 
     write.table(slice[,list(
       ##!@todo this is easier to get from x$schedule
@@ -389,9 +386,11 @@ writeSlices = function(x, sliceDir='csv'){
       lastVertices[, list(rank, last_vertex)],
       file=file.path(sliceDir, paste(sliceName, '.last_vertices.csv', sep='')),
       row.names=F, quote=F, sep=',')
+    save(slice, file=file.path(sliceDir, paste(sliceName, '.Rsave', sep='')))
   }
-  mclapply(names(slices), function(sliceTime) writeSlice(slices[[sliceTime]], sliceTime))
-  NULL
+  mclapply(names(slices), function(sliceTime)
+           writeSlice(slices[[sliceTime]], sliceTime))
+  confName
 }
 
 ##!@todo this may run into memory limitations. If so, just run the
@@ -448,7 +447,7 @@ go = function(){
     cat(entry$key, 'Saving\n')
     save(measurementCols, reduced, entrySpace, countedEntryspace,
          entryCols, entries, confSpace, confCols,
-         entry,
+         entry, missingConfs,
          file=filename)
     cat(entry$key, 'Done saving\n')
     cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
