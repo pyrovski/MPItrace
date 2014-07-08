@@ -1,5 +1,6 @@
 require('rjson')
 require('data.table')
+require('parallel')
 source('./util.R')
 source('~/local/bin/pbutils.R')
 
@@ -19,7 +20,7 @@ readLP = function(filename){
         b = rbindlist(lapply(b, as.data.table))
         b$index = indices
         b
-      })
+      }, mc=T)
     } else
       arrayVars = NULL
     if(length(singleSel)){
