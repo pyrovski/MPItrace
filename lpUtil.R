@@ -1,5 +1,7 @@
 require('rjson')
 require('data.table')
+source('./util.R')
+source('~/local/bin/pbutils.R')
 
 readLP = function(filename){
   a = fromJSON(file=filename)
@@ -13,7 +15,7 @@ readLP = function(filename){
       arrayVars = nnapply(uArrayNames, function(name){
         b = b[grep(paste(name, '[[]', sep=''), names(b))]
         map = strsplit(gsub('[]]', '', names(b)), '[[]')
-        indices = sapply(map, '[[', 2)
+        indices = as.numeric(sapply(map, '[[', 2))
         b = rbindlist(lapply(b, as.data.table))
         b$index = indices
         b
@@ -30,4 +32,9 @@ readLP = function(filename){
   a$Solution[[2]]$Constraint = f(a$Solution[[2]]$Constraint)
   
   a
+}
+
+writeSolve = function(){
+  confName = writeSlices(reduced)
+  
 }
