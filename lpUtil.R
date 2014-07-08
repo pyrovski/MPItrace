@@ -20,7 +20,7 @@ readLP = function(filename){
         b = rbindlist(lapply(b, as.data.table))
         b$index = indices
         b
-      }, mc=T)
+      })
     } else
       arrayVars = NULL
     if(length(singleSel)){
@@ -35,7 +35,19 @@ readLP = function(filename){
   a
 }
 
+readCommandResults = function(command){
+  files = list.files(pattern=paste(command, '_[0-9]+[.][0-9]+[.]results$', sep=''))
+  times = sub('[.]results$', '', sub(paste(command, '_', sep=''), '', files))
+  result = mclapply(files, readLP)
+  names(result) = times
+  result
+}
+
 writeSolve = function(){
   confName = writeSlices(reduced)
   
 }
+
+files = list.files(pattern='.*[.]results$')
+commands = unique(sub('_[0-9]+[.][0-9]+[.]results','',files))
+results = nnapply(commands, readCommandResults)
