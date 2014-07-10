@@ -453,3 +453,10 @@ m_chull = function(x, y){
   res <- .Call(grDevices:::C_chull, x)
   return(res)
 }
+
+loadMergedData = function(filename){
+  load(filename, envir=.GlobalEnv)
+  setkey(reduced$edges, e_uid)
+  setkey(reduced$edges_inv, e_uid)
+  setkey(reduced$schedule, e_uid)
+}
