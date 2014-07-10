@@ -46,8 +46,72 @@ readLP = function(filename){
 
 reconcileLP = function(resultFile, timesliceFile){
   result = readLP(resultFile)
+  vertexStartTimes = result$Solution[[2]]$Variable$vertexStartTime
+  setnames(vertexStartTimes, c('index', 'Value'), c('vertex', 'start'))
+  setkey(vertexStartTimes, vertex)
+
   load(timesliceFile)
-  list(result=result, slice=slice)
+  vertices = slice[, list(vertex=union(src, dest))]
+  setkey(vertices, vertex)
+  vertices = vertexStartTimes[vertices]
+  rm(vertexStartTimes)
+  vertices[is.na(start), start := 0.0]
+  setkey(vertices, vertex)
+
+  e_uids = unique(slice[, e_uid])
+  
+  taskDuration = result$Solution[[2]]$Variable$taskDuration
+  setnames(taskDuration, c('index', 'Value'), c('e_uid', 'lpWeight'))
+  setkey(taskDuration, e_uid)
+  taskDuration = taskDuration[J(e_uids)]
+  taskDuration[is.na(lpWeight), lpWeight := 0]
+
+  taskPower = result$Solution[[2]]$Variable$taskPower
+  setnames(taskPower, c('index', 'Value'), c('e_uid', 'lpPower'))
+  setkey(taskPower, e_uid)
+  taskPower = taskPower[J(e_uids)]
+  ## these should not exist
+  taskPower[is.na(lpPower), lpPower := 0]
+
+  setkey(taskPower, e_uid)
+  setkey(taskDuration, e_uid)
+  task = merge(taskDuration, taskPower, all=T)
+  
+  setkey(slice, e_uid, weight, power)
+  setkey(task, e_uid, lpWeight, lpPower)
+  f = function(a, b) abs(a-b) < 1e-6
+  m = lapply(e_uids, function(u){
+    s = slice[J(u)]
+    if(nrow(s) == 1){
+      s[, frac := 1]
+      return(s)
+    }
+    lp = task[J(u)]
+    
+    ##setkey(lp, e_uid, lpWeight, lpPower)
+    ##setkey(s, e_uid, weight, power)
+
+    ##!@todo this can be done with multiple e_uids at once
+
+    ##!@todo this needs to be approximate
+    ##m = s[lp, nomatch=0]
+    m = s[f(weight, lp$lpWeight) & f(power, lp$lpPower)]
+    if(nrow(m) > 0){
+      m[, frac := 1]
+      return(m)
+    }
+
+    m = rbind(tail(s[weight < lp$lpWeight], 1), head(s[weight > lp$lpWeight], 1))
+    fastFrac = (lp$lpWeight - m[1, weight])/diff(m[, weight])
+    slowFrac = 1 - fastFrac
+    m$frac = c(fastFrac, slowFrac)
+    return(m)
+  })
+  m = rbindlist(m)
+  
+  list(result=result,
+       ##slice=slice,
+       m=m)
 }
 
 timeStr = '[0-9]+[.][0-9]+'
@@ -77,6 +141,12 @@ readCommandResults = function(command){
   nnapply(powerLimits, f)
 }
 
-files = list.files(pattern='.*[.]results$')
-commands = unique(sub(paste('_', timeStr, '[.]p.*w[.]results', sep=''),'',files))
-results = nnapply(commands, readCommandResults)
+lpGo = function(){
+  files = list.files(pattern='.*[.]results$')
+  commands <<- unique(sub(paste('_', timeStr, '[.]p.*w[.]results', sep=''),'',files))
+  results <<- nnapply(commands, readCommandResults)
+  NULL
+}
+
+if(!interactive())
+  lpGo()
