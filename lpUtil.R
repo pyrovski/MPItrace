@@ -47,6 +47,7 @@ readLP = function(filename){
 reconcileLP = function(resultFile, timesliceFile){
   result = readLP(resultFile)
   vertexStartTimes = result$Solution[[2]]$Variable$vertexStartTime
+  result$Solution[[2]]$Variable$vertexStartTime = NULL
   setnames(vertexStartTimes, c('index', 'Value'), c('vertex', 'start'))
   setkey(vertexStartTimes, vertex)
 
@@ -57,6 +58,13 @@ reconcileLP = function(resultFile, timesliceFile){
   rm(vertexStartTimes)
   vertices[is.na(start), start := 0.0]
   setkey(vertices, vertex)
+
+  unconstrained = vertices[start > .95]
+  if(nrow(unconstrained) > 0){
+      cat('unconstrained vertices!\n')
+      print(unconstrained)
+  }
+  rm(unconstrained)
 
   e_uids = unique(slice[, e_uid])
   
@@ -87,6 +95,11 @@ reconcileLP = function(resultFile, timesliceFile){
       return(s)
     }
     lp = task[J(u)]
+    unconstrained = lp[lpWeight > .9 & (lpWeight %% 1) < .1]
+    if(nrow(unconstrained) > 0){
+      cat('unconstrained weight(s)!\n')
+      print(unconstrained)
+    }
     
     ##setkey(lp, e_uid, lpWeight, lpPower)
     ##setkey(s, e_uid, weight, power)
@@ -111,6 +124,7 @@ reconcileLP = function(resultFile, timesliceFile){
   
   list(result=result,
        ##slice=slice,
+       vertices=vertices[order(start)],
        m=m)
 }
 
