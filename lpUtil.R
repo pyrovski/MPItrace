@@ -51,14 +51,13 @@ reconcileLP = function(resultFile, timesliceFile){
   setnames(vertexStartTimes, c('index', 'Value'), c('vertex', 'start'))
   setkey(vertexStartTimes, vertex)
 
-  load(timesliceFile)
+  tryCatch(load(timesliceFile), finally=NULL)
   vertices = slice[, list(vertex=union(src, dest))]
   setkey(vertices, vertex)
   vertices = vertexStartTimes[vertices]
   rm(vertexStartTimes)
   vertices[is.na(start), start := 0.0]
-  setkey(vertices, vertex)
-
+  
   unconstrained = vertices[start > .95]
   if(nrow(unconstrained) > 0){
       cat('unconstrained vertices!\n')
@@ -88,7 +87,7 @@ reconcileLP = function(resultFile, timesliceFile){
   setkey(slice, e_uid, weight, power)
   setkey(task, e_uid, lpWeight, lpPower)
   f = function(a, b) abs(a-b) < 1e-6
-  m = lapply(e_uids, function(u){
+  edges = lapply(e_uids, function(u){
     s = slice[J(u)]
     if(nrow(s) == 1){
       s[, frac := 1]
@@ -101,10 +100,7 @@ reconcileLP = function(resultFile, timesliceFile){
       print(unconstrained)
     }
     
-    ##setkey(lp, e_uid, lpWeight, lpPower)
-    ##setkey(s, e_uid, weight, power)
-
-    ##!@todo this can be done with multiple e_uids at once
+     ##!@todo this can be done with multiple e_uids at once
 
     ##!@todo this needs to be approximate
     ##m = s[lp, nomatch=0]
@@ -118,14 +114,17 @@ reconcileLP = function(resultFile, timesliceFile){
     fastFrac = (lp$lpWeight - m[1, weight])/diff(m[, weight])
     slowFrac = 1 - fastFrac
     m$frac = c(fastFrac, slowFrac)
+    ##!@todo adjust weight by frac
+    
     return(m)
   })
-  m = rbindlist(m)
+  edges = rbindlist(edges)
   
-  list(result=result,
-       ##slice=slice,
-       vertices=vertices[order(start)],
-       m=m)
+  list(
+    ##result=result,
+    ##slice=slice,
+    vertices=vertices[order(start)],
+    edges=edges)
 }
 
 timeStr = '[0-9]+[.][0-9]+'
@@ -146,7 +145,7 @@ readCommandResults = function(command){
       list.files(pattern=
                  paste(command, '_', timeStr, '[.]p', powerLimit, 'w[.]results$',
                        sep=''))
-    times = sub('p.*w[.]results$', '',
+    times = sub('[.]p.*w[.]results$', '',
       sub(paste(command, '_', sep=''), '', resultFiles))
     result = mcmapply(reconcileLP, resultFiles, timesliceFiles, SIMPLIFY=F)
     names(result) = times
@@ -160,6 +159,50 @@ lpGo = function(){
   commands <<- unique(sub(paste('_', timeStr, '[.]p.*w[.]results', sep=''),'',files))
   results <<- nnapply(commands, readCommandResults)
   NULL
+}
+
+lpMerge = function(slices){
+  edges =
+    rbindlist(napply(slices, function(e, name) {
+      e$edges$ts =name; e$edges
+    }))
+  vertices =
+    rbindlist(napply(slices, function(e, name) {
+      e$vertices$ts =name; e$vertices
+    }))
+  tsDuration = vertices[,.SD[which.max(start)],by=ts]
+  tsDuration[, vertex := NULL]
+  setnames(tsDuration, 'start', 'tsEnd')
+  setkey(tsDuration, ts)
+  tsDuration[, tsEnd := cumsum(tsEnd)]
+  tsDuration$tsStart = 0
+  tsDuration$tsStart[2:nrow(tsDuration)] = head(tsDuration[, tsEnd], -1)
+
+  setkey(vertices, ts)
+  vertices = vertices[tsDuration[, list(ts, tsStart)]]
+  vertices[, c('start', 'tsStart') := list(start + tsStart, NULL)]
+
+  setnames(vertices, 'vertex', 'src')
+  setkey(vertices, ts, src)
+  setkey(edges, ts, src)
+  edges = vertices[edges]
+
+  edges[, c('src', 'dest') := list(as.numeric(src), as.numeric(dest))]
+  edges = edges[order(ts, e_uid, -frac)]
+  edges =
+    edges[,if(.N ==2){
+      e = copy(.SD)
+      e[1, dest := src+.5]
+      e[2, c('src', 'start') := list(src+.5, start + e[1, weight])]
+      e
+    } else {
+      .SD
+    },by=list(e_uid, ts)]
+
+  ##!@todo assign weights to slack edges
+  
+  return(list(edges = edges,
+              vertices = vertices))
 }
 
 if(!interactive())
