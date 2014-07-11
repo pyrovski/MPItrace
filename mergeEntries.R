@@ -32,13 +32,13 @@ readEntry = function(filename){
 }
 
 mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
-  entries <<- lapply(inList, readEntry)
+  entries <<- mclapply(inList, readEntry)
   errors <<- sapply(entries, is.null)
   #errorFiles <<- inList[errors]
   entries <<- entries[!errors]
-  lengths <<- sapply(entries, length)
-  errors <<- lengths < max(lengths)
-  entries <<- entries[!errors]
+#  lengths <<- sapply(entries, length)
+#  errors <<- lengths < max(lengths)
+#  entries <<- entries[!errors]
   classes <<- unique(rbindlist(lapply(entries,
     function(entry)
     as.data.frame(cbind(name = names(entry),
@@ -49,7 +49,7 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
     missing = setdiff(classes$name, names(entry))
     for(col in missing)
       ##    entry[[col]] = as(NA, classes[J(col)]$class)
-      entry[[col]] = NA
+      entry[[col]] = as(NA, classes[J(col), class])
     entry = as.data.table(entry)
     setcolorder(entry, classes$name)
     entry
