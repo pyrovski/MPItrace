@@ -60,7 +60,7 @@ reconcileLP = function(resultFile, timesliceFile){
   
   unconstrained = vertices[start > .95]
   if(nrow(unconstrained) > 0){
-      cat('unconstrained vertices!\n')
+      cat('unconstrained vertices:', resultFile, '!\n')
       print(unconstrained)
   }
   rm(unconstrained)
