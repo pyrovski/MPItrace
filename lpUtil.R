@@ -56,6 +56,9 @@ reconcileLP = function(resultFile, timesliceFile){
   setkey(vertices, vertex)
   vertices = vertexStartTimes[vertices]
   rm(vertexStartTimes)
+  ##!@todo this is incorrect; some vertices are not present in this
+  ##!timeslice or the next; just because they're destinations doesn't
+  ##!mean we need to assign them start times.
   vertices[is.na(start), start := 0.0]
   
   unconstrained = vertices[start > .95]
@@ -115,7 +118,7 @@ reconcileLP = function(resultFile, timesliceFile){
     slowFrac = 1 - fastFrac
     m$frac = c(fastFrac, slowFrac)
     ##!@todo adjust weight by frac
-    
+    m[, weight := weight * frac]
     return(m)
   })
   edges = rbindlist(edges)
@@ -165,11 +168,11 @@ lpMerge = function(slices){
   edges =
     rbindlist(napply(slices, function(e, name) {
       e$edges$ts =name; e$edges
-    }))
+    }, mc=T))
   vertices =
     rbindlist(napply(slices, function(e, name) {
       e$vertices$ts =name; e$vertices
-    }))
+    }, mc=T))
   tsDuration = vertices[,.SD[which.max(start)],by=ts]
   tsDuration[, vertex := NULL]
   setnames(tsDuration, 'start', 'tsEnd')
@@ -186,6 +189,7 @@ lpMerge = function(slices){
   setkey(vertices, ts, src)
   setkey(edges, ts, src)
   edges = vertices[edges]
+  setnames(vertices, 'src', 'vertex')
 
   edges[, c('src', 'dest') := list(as.numeric(src), as.numeric(dest))]
   edges = edges[order(ts, e_uid, -frac)]
@@ -205,5 +209,7 @@ lpMerge = function(slices){
               vertices = vertices))
 }
 
-if(!interactive())
+if(!interactive()){
   lpGo()
+  results = lapply(results, function(e) lapply(e, lpMerge))
+}
