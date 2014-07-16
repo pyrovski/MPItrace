@@ -438,7 +438,7 @@ go = function(){
     cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     ##powerStats(reduced$edges)
-    p = powerTime(reduced$sched)
+    p = powerTime(reduced$sched, rbind(reduced$vertices, reduced$slackVertices))
     reduced$maxPower = max(p[, power])
     ## this is not entirely precise
     minPower = min(reduced$edges[power > 0, power]) * entry$ranks

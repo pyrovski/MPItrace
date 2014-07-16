@@ -37,7 +37,7 @@ oldPowerTime = function(x){
   return(powers)
 }
 
-powerTime = function(edges){
+powerTime = function(edges, vertices){
   ranks = unique(edges[, rank])
   f = function(x) c(x, 0)
   rf = function(r){
@@ -46,8 +46,9 @@ powerTime = function(edges){
     ##[order(start)]
     o = order(edges[,start])
     edges = edges[o]
-    times = edges[, start]
-    powers = c(0, edges[, power])
+    maxStart = max(vertices[, start])
+    times = c(edges[, start], maxStart)
+    powers = c(0, edges[, power], 0)
     steps = stepfun(x=times, y=powers)
     list(times=times,
          ##powers=powers,
