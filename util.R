@@ -154,17 +154,20 @@ timeslice = function(sched, vertices, edges, criticalPath,
     int[, left := 0]
 
     ## exterior edges: edges include interval
+    ##!@todo re-number src and dest vertices
     ext =
       sched[start <  sliceTime & deadline >= nextSlice,
             list(e_uid, weight, wslack, left=sliceTime-start,
                  right=nextSlice-start)]
 
+    ##!@todo re-number src vertex
     ## left overlap
     left =
       sched[start < sliceTime & deadline > sliceTime & deadline < nextSlice,
             list(e_uid, weight, wslack, left=sliceTime-start, right=wslack)]
     
     ## right overlap
+    ##!@todo re-number dest vertex
     right =
       sched[start >= sliceTime & start < nextSlice & deadline >= nextSlice,
             list(e_uid, weight, wslack, right=nextSlice-start)]
