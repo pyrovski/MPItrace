@@ -55,7 +55,7 @@ powerTime = function(edges, vertices){
          steps=steps)
   }
   powerSteps = mclapply(ranks, rf)
-  times = sort(unique(unlist(lapply(powerSteps, '[[', 'times'))))
+  times = c(-.000001, sort(unique(unlist(lapply(powerSteps, '[[', 'times')))))
   steps = lapply(powerSteps, '[[', 'steps')
   powers =
     as.data.table(cbind(start=times,
@@ -77,28 +77,28 @@ powerStats = function(edges, edges_inv){
 
   setkey(edges, e_uid)
   setkey(edges_inv, e_uid)
+
+  f = function(e){
+    e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
+    sched = getSchedule(e)
+    schedEdges = sched$edges
+    schedVertices = sched$vertices
+    sched = slackEdges(schedEdges, activeWaitConf, sched$critPath)
+    slackVertices =
+      sched[is.na(s_uid),
+            list(start=head(start, 1),via=-head(src, 1)), by=src]
+    setnames(slackVertices, c('vertex', 'start', 'via'))
+    powerTime(sched, rbind(schedVertices, slackVertices))
+  }
   
   ##fastest
-  e = edges[,.SD[which.min(weight)],by=e_uid]
-  e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
-  sched = getSchedule(e)
-
-  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
-  powersMinTime = powerTime(sched)
+  powersMinTime = f(edges[,.SD[which.min(weight)],by=e_uid])
   
   ## max power
-  e = edges[,.SD[which.max(power)],by=e_uid]
-  e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
-  sched = getSchedule(e)
-  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
-  powersMaxPower = powerTime(sched)
+  powersMaxPower = f(edges[,.SD[which.max(power)],by=e_uid])
 
   ## min power
-  e = edges[,.SD[which.min(power)],by=e_uid]
-  e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
-  sched = getSchedule(e)
-  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
-  powersMinPower = powerTime(sched)
+  powersMinPower = f(edges[,.SD[which.min(power)],by=e_uid])
 
   result =
     list(minTime  = powersMinTime,
