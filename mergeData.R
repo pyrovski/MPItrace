@@ -317,7 +317,7 @@ reduceConfs = function(x){
 }
 
 writeSlices = function(x, sliceDir='csv'){
-  dir.create(sliceDir)
+  dir.create(sliceDir, showWarnings=F)
   options(scipen=7)
   firstCols = c('e_uid', confCols)
   confName = gsub('[/.]', '_', x$key)
@@ -372,19 +372,10 @@ writeSlices = function(x, sliceDir='csv'){
     ## ##!destination rank, and we don't care about messages. Only the
     ## ##!computation and slack edges should have rank information.
 
-    ##!@todo this might choose the wrong edge for a rank if multiple
-    ##!edges start at the same time? I guess we should break ties by
-    ##!choosing computation or slack edges, but not message
-    ##!edges. Alternatively, the timeslice time can just depend on all
-    ##!tasks.
-    lastVertices =
-      schedVertices[slice[,list(dest, rank)]][, .SD[which.max(start)],
-                                              .SDcols=c('start', 'vertex'),
-                                              by=rank]
-    setnames(lastVertices, 'vertex', 'last_vertex')
+    ranks = unique(slice[, list(rank)])
     write.table(
-      lastVertices[, list(rank, last_vertex)],
-      file=file.path(sliceDir, paste(sliceName, '.last_vertices.csv', sep='')),
+      ranks,
+      file=file.path(sliceDir, paste(sliceName, '.rank.csv', sep='')),
       row.names=F, quote=F, sep=',')
     save(slice, file=file.path(sliceDir, paste(sliceName, '.Rsave', sep='')))
   }
@@ -400,7 +391,10 @@ go = function(){
   ## group experiments by entryCols from entries
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
-
+  ##! remove runs with turboboost
+  entries = entries[cpuFreq != 2601000]
+  setkeyv(entries, entryCols)
+  
   measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
   confSpace <<- unique(entries[,confCols,with=F])
   setkey(confSpace)
@@ -424,7 +418,6 @@ go = function(){
       print(missingConfs)
       save(missingConfs, file=paste('missing', gsub('[/.]', '_', entry$key), sep='.'))
     }
-    
     cat(entry$key, 'Merging configurations\n')
     merged <- mergeConfs(entry, entries)
     cat(entry$key, 'Done merging configurations\n')
