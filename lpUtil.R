@@ -89,7 +89,7 @@ reconcileLP = function(resultFile, timesliceFile){
   
   setkey(slice, e_uid, weight, power)
   setkey(task, e_uid, lpWeight, lpPower)
-  f = function(a, b) abs(a-b) < 1e-6
+  f = function(a, b) abs(a-b) < 1e-8
   edges = lapply(e_uids, function(u){
     s = slice[J(u)]
     if(nrow(s) == 1){
@@ -113,8 +113,9 @@ reconcileLP = function(resultFile, timesliceFile){
       return(m)
     }
 
-    m = rbind(tail(s[weight < lp$lpWeight], 1), head(s[weight > lp$lpWeight], 1))
-    fastFrac = (lp$lpWeight - m[1, weight])/diff(m[, weight])
+    ##!@todo figure out how to get Pyomo to be more precise with its output
+    m = rbind(tail(s[power < lp$lpPower], 1), head(s[power > lp$lpPower], 1))
+    fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
     slowFrac = 1 - fastFrac
     m$frac = c(fastFrac, slowFrac)
     ##!@todo adjust weight by frac
@@ -167,13 +168,15 @@ lpGo = function(){
 lpMerge = function(slices){
   edges =
     rbindlist(napply(slices, function(e, name) {
-      e$edges$ts =name; e$edges
+      e$edges$ts = name
+      e$edges
     }, mc=T))
   vertices =
     rbindlist(napply(slices, function(e, name) {
-      e$vertices$ts =name; e$vertices
+      e$vertices$ts =name
+      e$vertices
     }, mc=T))
-  tsDuration = vertices[,.SD[which.max(start)],by=ts]
+  tsDuration = vertices[, .SD[which.max(start)], by=ts]
   tsDuration[, vertex := NULL]
   setnames(tsDuration, 'start', 'tsEnd')
   setkey(tsDuration, ts)
@@ -191,6 +194,10 @@ lpMerge = function(slices){
   edges = vertices[edges]
   setnames(vertices, 'src', 'vertex')
 
+  ##!@todo renumber vertices across timeslices
+  cat()
+  
+  ## assign new vertices to split-config edges from each timeslice
   edges[, c('src', 'dest') := list(as.numeric(src), as.numeric(dest))]
   edges = edges[order(ts, e_uid, -frac)]
   edges =
@@ -203,6 +210,7 @@ lpMerge = function(slices){
       .SD
     },by=list(e_uid, ts)]
 
+  
   ##!@todo assign weights to slack edges
   
   return(list(edges = edges,
