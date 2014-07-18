@@ -160,7 +160,7 @@ timeslice = function(sched, vertices, edges, criticalPath,
             list(e_uid, weight, wslack,
                  left=sliceTime-start,
                  right=nextSlice-start)]
-    ext[, c('splitSrc', 'splitDest') := list(F, F)]
+    ext[, c('splitSrc', 'splitDest') := list(T, T)]
 
     ##! re-number src vertex
     ## left overlap
