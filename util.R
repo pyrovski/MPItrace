@@ -150,31 +150,34 @@ timeslice = function(sched, vertices, edges, criticalPath,
     ## interior edges: entirely included in the interval
     int =
       sched[start >= sliceTime & deadline < nextSlice,
-            list(e_uid, src, dest, weight, wslack, right=wslack)]
-    int[, left := 0]
+            list(e_uid, weight, wslack, right=wslack)]
+    int[, c('left', 'splitSrc', 'splitDest') := list(0, F, F)]
 
     ## exterior edges: edges include interval
-    ##!@todo re-number src and dest vertices
+    ##! re-number src and dest vertices
     ext =
       sched[start <  sliceTime & deadline >= nextSlice,
-            list(e_uid, src=src+.1, dest=dest-.1, weight, wslack,
+            list(e_uid, weight, wslack,
                  left=sliceTime-start,
                  right=nextSlice-start)]
+    ext[, c('splitSrc', 'splitDest') := list(F, F)]
 
-    ##!@todo re-number src vertex
+    ##! re-number src vertex
     ## left overlap
     left =
       sched[start < sliceTime & deadline > sliceTime & deadline < nextSlice,
-            list(e_uid, src=src+.1, dest, weight, wslack,
+            list(e_uid, weight, wslack,
                  left=sliceTime-start, right=wslack)]
+    left[, c('splitSrc', 'splitDest') := list(T, F)]
     
     ## right overlap
-    ##!@todo re-number dest vertex
+    ##! re-number dest vertex
     right =
       sched[start >= sliceTime & start < nextSlice & deadline >= nextSlice,
-            list(e_uid, src, dest=dest-.1, weight, wslack,
+            list(e_uid, weight, wslack,
                  right=nextSlice-start)]
     right[, left := 0]
+    right[, c('splitSrc', 'splitDest') := list(F, T)]
     
     result = rbind(int, ext, left, right, use.names=T)
     result[weight == 0, c('left', 'right') := list(0,0)]
@@ -206,8 +209,8 @@ timeslice = function(sched, vertices, edges, criticalPath,
     if(nrow(result[weight < 0]) > 0)
       stop('Negative-weight edge(s)\n')
     setkey(result, e_uid)
-    ##result = result[sched[, list(e_uid, src, dest, rank, type)]]
-    result = result[sched[, list(e_uid, rank, type)]]
+    result = result[sched[, list(e_uid, src, dest, rank, type)]]
+    ##result = result[sched[, list(e_uid, rank, type)]]
     if(any(!ranks %in% unique(result[, rank]))){
       stop('every rank should have an edge in every timeslice\n')
     }
