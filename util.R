@@ -69,17 +69,27 @@ powerTime = function(edges, vertices){
   return(powers)
 }
 
+plotPowerTime = function(pt, name){
+  pdf(file=paste(name, '.pdf', sep=''))
+  s = stepfun(pt[[1]], c(pt[[2]], 0))
+  plot(s, main=name)
+  dev.off()
+}
+
 powerStats = function(edges, edges_inv){
 ### need to assign start times for each set
-
+  
   activeWaitConf = edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
   activeWaitConf$weight = as.numeric(NA)
-
+  
   setkey(edges, e_uid)
   setkey(edges_inv, e_uid)
-
+  
+  cols = c('e_uid', 's_uid', 'd_uid', 'src', 'dest', 'rank', 'type')
+  cols = intersect(cols, names(edges_inv))
+  
   f = function(e){
-    e = e[edges_inv[, list(e_uid, s_uid, d_uid, src, dest, rank, type)]]
+    e = e[edges_inv[, cols, with=F]]
     sched = getSchedule(e)
     schedEdges = sched$edges
     schedVertices = sched$vertices
@@ -104,13 +114,7 @@ powerStats = function(edges, edges_inv){
     list(minTime  = powersMinTime,
          maxPower = powersMaxPower,
          minPower = powersMinPower)
-  nnapply(names(result), function(name){
-    r = result[[name]]
-    pdf(file=paste(name, '.pdf', sep=''))
-    s = stepfun(r[[1]], c(r[[2]], 0))
-    plot(s, main=name)
-    dev.off()
-    })
+  napply(result, plotPowerTime)
   return(result)
 }
 
@@ -319,7 +323,9 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ###!start as late as possible; for each edge:
 ###! start = vertices[J(dest), start] - weight
   setkey(vertices, vertex)
-  edges = edges[vertices[, list(vertex, start)]]
+##  edges = edges[vertices[, list(vertex, start)]]
+  edges = vertices[, list(vertex, start)][edges]
+  setnames(edges, 'vertex', 'src')
  
   ##if(any(edges$start == -Inf))
   ##  stop('Some edges not assigned a start time!\n')

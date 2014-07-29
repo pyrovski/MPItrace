@@ -1,3 +1,4 @@
+require('igraph')
 require('rjson')
 require('data.table')
 require('parallel')
@@ -168,7 +169,7 @@ lpGo = function(){
   NULL
 }
 
-lpMerge = function(slices){
+lpMerge = function(slices, name){
   edges =
     rbindlist(napply(slices, function(e, name) {
       e$edges$ts = name
@@ -234,9 +235,13 @@ lpMerge = function(slices){
   setkey(edges, src)
   vertices[edges[,list(src, start)], start:=start]
   vertices[J('2'), start:=edges[dest=='2', max(start+weight)]]
+
+  pt = powerTime(edges, vertices)
+  plotPowerTime(pt, name=name)
   
   return(list(edges = edges,
-              vertices = vertices))
+              vertices = vertices,
+              pt = pt))
 }
 
 if(!interactive()){
