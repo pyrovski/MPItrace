@@ -161,6 +161,7 @@ readCommandResults = function(command){
 }
 
 lpGo = function(){
+  load('../mergedEntries.Rsave', envir=.GlobalEnv)
   files = list.files(pattern='.*[.]results$')
   commands <<- unique(sub(paste('_', timeStr, '[.]p.*w[.]results', sep=''),'',files))
   results <<- nnapply(commands, readCommandResults)
@@ -202,24 +203,29 @@ lpMerge = function(slices){
   edges[, ts := as.integer(ts)]
   edges[splitDest == T, dest := paste(src, '_', ts, 's', sep='')]
   edges[splitSrc == T, src := paste(src, '_', ts-1, 's', sep='')]
+  edges[, c('splitSrc', 'splitDest') := list(NULL, NULL)]
 
   ## just to be consistent
   ##edges[splitSrc==F, src := paste(src, ts, sep='_')]
   ##edges[splitDest==F, dest := paste(dest, ts, sep='_')]
   
-  ## assign new vertices to split-config edges from each timeslice
+  ## assign new vertices to split-config edges from each timeslice,
+  ## rename edge uids to be unique across timeslices
   edges = edges[order(ts, e_uid, -frac)]
+  edges[, second := F]
   edges =
     edges[,if(.N ==2){
       e = copy(.SD)
-      e[1, dest := paste(src, '.', sep='')]
-      e[2, c('src', 'start') :=
-        list(paste(src, '.', sep=''), start + e[1, weight])]
+      e[1, c('dest') := list(paste(src, '.', sep=''))]
+      e[2, c('src', 'start', 'second') :=
+        list(paste(src, '.', sep=''), start + e[1, weight], T)]
       e
     } else {
       .SD
-    },by=list(e_uid, ts)]
-
+    }, by=list(e_uid, ts)]
+  edges[, e_uid := as.character(e_uid)]
+  edges[, e_uid := paste(ts, e_uid, sep='_')]
+  edges[second == T, e_uid := paste(e_uid, '.', sep='')]
   
   ##!@todo assign weights to slack edges
 
