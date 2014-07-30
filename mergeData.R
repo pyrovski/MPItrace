@@ -249,7 +249,14 @@ reduceConfs = function(x){
     setkey(x$messageEdges, e_uid)
   }
   setkey(x$edges_inv, e_uid)
-  
+
+  ## export an edge set for naive configs
+
+  ##!@todo find a set for naive->thread reduction w/FL.  This is not an
+  ##!efficient frontier, but is easily implementable in a runtime
+  ##!system.
+  x$n_edges = x$edges[, .SD[OMP_NUM_THREADS==max(OMP_NUM_THREADS)], by=e_uid]
+   
   cat('Pareto frontiers\n')
   ## get pareto frontiers
   x$compEdges = pareto(x$compEdges)
@@ -453,7 +460,6 @@ go = function(){
   }
   setkeyv(entries, entryCols)
   ##!@todo launch these as separate jobs
-  ##result <<-
   rowApply(entrySpace, f)
   ##names(result) <<- entrySpace$key
   NULL
