@@ -134,8 +134,7 @@ powerStats = function(edges, edges_inv, powerLimits){
       
       pl2 =
         edges[, .SD[power <= powerLimit/nRanks |
-                    power == min(power)][
-                      OMP_NUM_THREADS == max(OMP_NUM_THREADS)][which.max(cpuFreq)],
+                    power == min(power)][which.min(weight)],
               by=e_uid]
 
       pl2 = f(pl2)
