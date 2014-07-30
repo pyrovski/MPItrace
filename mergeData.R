@@ -255,8 +255,8 @@ reduceConfs = function(x){
   ##!@todo find a set for naive->thread reduction w/FL.  This is not an
   ##!efficient frontier, but is easily implementable in a runtime
   ##!system.
-  x$n_edges = x$edges[, .SD[OMP_NUM_THREADS==max(OMP_NUM_THREADS)], by=e_uid]
-   
+  x$n_edges = x$compEdges[, .SD[OMP_NUM_THREADS==max(OMP_NUM_THREADS)], by=e_uid]
+  
   cat('Pareto frontiers\n')
   ## get pareto frontiers
   x$compEdges = pareto(x$compEdges)
