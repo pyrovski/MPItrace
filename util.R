@@ -76,7 +76,7 @@ plotPowerTime = function(pt, name){
   dev.off()
 }
 
-powerStats = function(edges, edges_inv){
+powerStats = function(edges, edges_inv, powerLimits){
 ### need to assign start times for each set
   
   activeWaitConf = edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
@@ -114,6 +114,35 @@ powerStats = function(edges, edges_inv){
     list(minTime  = powersMinTime,
          maxPower = powersMaxPower,
          minPower = powersMinPower)
+
+  ## power-limited
+  if(!missing(powerLimits)){
+    ranks = unique(edges_inv[, rank])
+    nRanks = length(ranks)
+###!@todo implement a few strategies for runtime power management: 1:
+### uniform per-rank power constraints, naive config+FL 2: uniform
+### per-rank power constraints, intelligent config 3: initially
+### uniform per-rank power constraints with excess reallocation (this
+### requires event simulation).
+    for(powerLimit in powerLimits){
+      ##!@todo get maxconf.  This could depend on all confCols.
+
+      ## this may violate the power constraint. !@todo warn on violation
+
+      ##!@todo retain inefficient configurations for pl1
+
+      
+      pl2 =
+        edges[, .SD[power <= powerLimit/nRanks |
+                    power == min(power)][
+                      OMP_NUM_THREADS == max(OMP_NUM_THREADS)][which.max(cpuFreq)],
+              by=e_uid]
+
+      pl2 = f(pl2)
+      name = paste(powerLimit, 'pl2', sep='_')
+      result[[name]] = pl2
+    }
+  }
   napply(result, plotPowerTime)
   return(result)
 }
