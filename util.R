@@ -466,12 +466,25 @@ pareto = function(edges){
       ##   if(tail(result, 1)[, power] != maxPower)
       ##     stop('incorrect assumption\n')
       ## }
-      return(head(result, -1))
-      ##slopes = diff(result[, power])/diff(result[, weight])
+      result = head(result, -1)
+      if(nrow(result) > 2){
+        result[, slope := c(Inf, diff(power)/diff(weight))]
+        ##!@todo remove neighboring similar slopes
+        repeat{
+          diffSlope = diff(result[, slope])
+          sel = abs(diffSlope) <= 1e-7
+          if(any(sel, na.rm=T)){
+            result = result[!sel]
+          } else
+            break
+        }
+        result[, slope := NULL]
+      }
+      return(result)
 ###!@todo this is not sufficient; it may remove only a subset of offending points
       ##result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
     }
-
+    
     ## if(is.unsorted(result[, weight]))
     ##   stop('Pareto error: weight ', e)
     ## if(is.unsorted(rev(result[, power])))
