@@ -81,12 +81,19 @@ reconcileLP = function(resultFile, timesliceFile){
   setnames(taskPower, c('index', 'Value'), c('e_uid', 'lpPower'))
   setkey(taskPower, e_uid)
   taskPower = taskPower[J(e_uids)]
-  ## these should not exist
-  taskPower[is.na(lpPower), lpPower := 0]
-
   setkey(taskPower, e_uid)
+  ## these should not exist, at least for comp edges
+  ##!@todo warn on NA power for comp edges
+  taskPower = taskPower[slice[,head(.SD, 1),keyby=e_uid,.SDcols=c('type')]]
+  if(nrow(taskPower[is.na(lpPower) & type == 'comp']) > 0){
+    stop('LP should provide all comp task power entries')
+  }
+  taskPower[is.na(lpPower) & type == 'comp', lpPower := 0]
+  taskPower[, type := NULL]
+
   setkey(taskDuration, e_uid)
   task = merge(taskDuration, taskPower, all=T)
+  rm(taskPower, taskDuration)
   
   setkey(slice, e_uid, weight, power)
   setkey(task, e_uid, lpWeight, lpPower)
@@ -104,7 +111,7 @@ reconcileLP = function(resultFile, timesliceFile){
       print(unconstrained)
     }
     
-     ##!@todo this can be done with multiple e_uids at once
+    ##!@todo this can be done with multiple e_uids at once
 
     ##!@todo this needs to be approximate
     ##m = s[lp, nomatch=0]
@@ -116,7 +123,7 @@ reconcileLP = function(resultFile, timesliceFile){
 
     ##!@todo figure out how to get Pyomo to be more precise with its output
 
-    ##! can readjust lp weight based on selected power
+    ##! can re-adjust lp weight based on selected power
     m = rbind(head(s[power < lp$lpPower], 1), tail(s[power > lp$lpPower], 1))
     fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
     slowFrac = 1 - fastFrac
