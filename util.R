@@ -134,7 +134,8 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F){
       list(minTime  = powersMinTime,
            maxPower = powersMaxPower,
            minPower = powersMinPower)
-  }
+  } else
+    result = list()
   
   ## power-limited
   if(!missing(powerLimits)){
