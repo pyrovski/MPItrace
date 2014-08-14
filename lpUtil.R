@@ -142,6 +142,8 @@ reconcileLP = function(resultFile, timesliceFile){
 }
 
 timeStr = '[0-9]+[.][0-9]+'
+
+##!@todo save results from this function, check for newer inputs than previous result
 readCommandResults = function(command){
   cat(command, '\n')
   resultFiles =
