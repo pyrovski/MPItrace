@@ -47,9 +47,14 @@ powerTime = function(edges, vertices){
     o = order(edges[,start])
     edges = edges[o]
     maxStart = max(vertices[, start])
-    times = c(edges[, start], maxStart)
-    powers = c(0, edges[, power], 0)
-    steps = stepfun(x=times, y=powers)
+    times = edges[, start]
+    
+    powers = data.table(start=times, power=edges[, power])
+    cs = cumsum(rle(rev(powers[, power]))$lengths)
+    sel = rev(tail(cs, 1) + 1 - cs)
+    powers = powers[sel]
+    
+    steps = stepfun(x=c(powers$time, maxStart), y=c(0, powers$power, 0))
     list(times=times,
          ##powers=powers,
          steps=steps)
