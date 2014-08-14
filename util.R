@@ -79,11 +79,14 @@ plotPowerTime = function(pt, name){
   s = stepfun(pt[[1]], c(pt[[2]], 0))
   plot(s, main=name)
   dev.off()
+  NULL
 }
 
-powerStats = function(edges, edges_inv, powerLimits){
+powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F){
 ### need to assign start times for each set
-  
+
+  ##!@todo measure this in runtime in post-init
+  ##!@todo this should be processor-specific
   activeWaitConf = edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
   activeWaitConf$weight = as.numeric(NA)
   
@@ -103,23 +106,36 @@ powerStats = function(edges, edges_inv, powerLimits){
       sched[is.na(s_uid),
             list(start=head(start, 1),via=-head(src, 1)), by=src]
     setnames(slackVertices, c('vertex', 'start', 'via'))
+
+    ## nullify 0-length slack edges
+    ranks = unique(sched[, rank])
+    setkey(sched, rank)
+    sched = rbindlist(mclapply(ranks, function(r){
+      sched = sched[J(r)][order(start, -e_uid)]
+      dupes = duplicated(sched[, start])
+      sched[dupes, power := 0]
+      sched
+    }))
+    
     powerTime(sched, rbind(schedVertices, slackVertices))
   }
+
+  if(!limitedOnly){
+    ##fastest
+    powersMinTime = f(edges[,.SD[which.min(weight)],by=e_uid])
+    
+    ## max power
+    powersMaxPower = f(edges[,.SD[which.max(power)],by=e_uid])
+
+    ## min power
+    powersMinPower = f(edges[,.SD[which.min(power)],by=e_uid])
+
+    result =
+      list(minTime  = powersMinTime,
+           maxPower = powersMaxPower,
+           minPower = powersMinPower)
+  }
   
-  ##fastest
-  powersMinTime = f(edges[,.SD[which.min(weight)],by=e_uid])
-  
-  ## max power
-  powersMaxPower = f(edges[,.SD[which.max(power)],by=e_uid])
-
-  ## min power
-  powersMinPower = f(edges[,.SD[which.min(power)],by=e_uid])
-
-  result =
-    list(minTime  = powersMinTime,
-         maxPower = powersMaxPower,
-         minPower = powersMinPower)
-
   ## power-limited
   if(!missing(powerLimits)){
     ranks = unique(edges_inv[, rank])
