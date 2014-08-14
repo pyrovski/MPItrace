@@ -54,7 +54,7 @@ powerTime = function(edges, vertices){
     sel = rev(tail(cs, 1) + 1 - cs)
     powers = powers[sel]
     
-    steps = stepfun(x=c(powers$time, maxStart), y=c(0, powers$power, 0))
+    steps = stepfun(x=c(powers$start, maxStart), y=c(0, powers$power, 0))
     list(times=times,
          ##powers=powers,
          steps=steps)
