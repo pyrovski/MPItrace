@@ -4,14 +4,15 @@ source('~/local/bin/pbutils.R')
 require('data.table')
 require('parallel')
 
-if(!exists('f_args') && !interactive()){
-  f_args = commandArgs(trailingOnly=T)
-  allArgs = commandArgs(trailingOnly=F)
-  if(length(f_args) < 2){
-    cat(paste("usage:", allArgs[1], "<input file list> <output R file>\n"))
-    quit()
-  }
-}
+## if(!exists('f_args') && !interactive()){
+##   f_args = commandArgs(trailingOnly=T)
+##   allArgs = commandArgs(trailingOnly=F)
+##   if(length(f_args) < 1){
+##     cat(paste("usage:", allArgs[1], "<input list file>\n"))
+##     quit(status=1)
+##   }
+## }
+## print(f_args)
 
 readEntry = function(filename){
   e = new.env()
@@ -31,7 +32,7 @@ readEntry = function(filename){
   })
 }
 
-mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
+mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.Rsave'){
   entries <<- mclapply(inList, readEntry)
   errors <<- sapply(entries, is.null)
   #errorFiles <<- inList[errors]
@@ -93,6 +94,5 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = f_args[2]){
        countedEntryspace)
 }
 
-if(!interactive())
-  mergeEntries()
-##mergeEntries(readLines('entries'), 'mergedEntries.Rsave')
+#if(!interactive())
+  mergeEntries(readLines('entries'))
