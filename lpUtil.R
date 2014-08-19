@@ -45,7 +45,7 @@ readLP = function(filename){
   a
 }
 
-reconcileLP = function(resultFile, timesliceFile){
+reconcileLP = function(resultFile, timesliceFile, keepAll=F){
   result = readLP(resultFile)
   vertexStartTimes = result$Solution[[2]]$Variable$vertexStartTime
   result$Solution[[2]]$Variable$vertexStartTime = NULL
@@ -105,6 +105,11 @@ reconcileLP = function(resultFile, timesliceFile){
       return(s)
     }
     lp = task[J(u)]
+
+    if(keepAll){
+      return(list(slice=slice, lp=lp))
+    }
+    
     unconstrained = lp[lpWeight > .9 & (lpWeight %% 1) < .1]
     if(nrow(unconstrained) > 0){
       cat('unconstrained weight(s)!\n')
@@ -113,7 +118,7 @@ reconcileLP = function(resultFile, timesliceFile){
     
     ##!@todo this can be done with multiple e_uids at once
 
-    ##!@todo this needs to be approximate
+    ##! this needs to be approximate
     ##m = s[lp, nomatch=0]
     m = s[f(weight, lp$lpWeight) & f(power, lp$lpPower)]
     if(nrow(m) > 0){
@@ -128,11 +133,14 @@ reconcileLP = function(resultFile, timesliceFile){
     fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
     slowFrac = 1 - fastFrac
     m$frac = c(fastFrac, slowFrac)
-    ##!@todo adjust weight by frac
+    ##! adjust weight by frac
     m[, weight := weight * frac]
+###! m should contain two rows; one for each configuration neighboring
+###! the LP-selected power/performance point
     return(m)
   })
-  edges = rbindlist(edges)
+  if(!keepAll)
+    edges = rbindlist(edges)
   
   list(
     ##result=result,
@@ -141,10 +149,11 @@ reconcileLP = function(resultFile, timesliceFile){
     edges=edges)
 }
 
+
 timeStr = '[0-9]+[.][0-9]+'
 
 ##!@todo save results from this function, check for newer inputs than previous result
-readCommandResults = function(command){
+readCommandResults = function(command, ...){
   cat(command, '\n')
   resultFiles =
     list.files(pattern=
@@ -163,18 +172,18 @@ readCommandResults = function(command){
                        sep=''))
     times = sub('[.]p.*w[.]results$', '',
       sub(paste(command, '_', sep=''), '', resultFiles))
-    result = mcmapply(reconcileLP, resultFiles, timesliceFiles, SIMPLIFY=F)
+    result = mcmapply(reconcileLP, resultFiles, timesliceFiles, ..., SIMPLIFY=F)
     names(result) = times
     result
   }
   nnapply(powerLimits, f)
 }
 
-lpGo = function(){
+lpGo = function(...){
   load('../mergedEntries.Rsave', envir=.GlobalEnv)
   files = list.files(pattern='.*[.]results$')
   commands <<- unique(sub(paste('_', timeStr, '[.]p.*w[.]results', sep=''),'',files))
-  results <<- nnapply(commands, readCommandResults)
+  results <<- nnapply(commands, readCommandResults, ...)
   NULL
 }
 
