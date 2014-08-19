@@ -107,7 +107,7 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
     lp = task[J(u)]
 
     if(keepAll){
-      return(list(slice=slice, lp=lp))
+      return(list(slice=s, lp=lp))
     }
     
     unconstrained = lp[lpWeight > .9 & (lpWeight %% 1) < .1]
