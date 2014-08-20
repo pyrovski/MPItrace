@@ -815,11 +815,10 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
 
   ## For the vertex frame, column 1 is the vertex name.
   ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
-  vertices = x[, list(name, duration, rank, vertex)]
+  vertices = x[, list(name, rank, hash, vertex)]
   vertices$name = paste(vertices$name, vertices$rank)
-  setnames(vertices, names(vertices), c('label', 'duration', 'rank', 'vertex'))
+  setnames(vertices, 'name', 'label')
   vertices$rank = NULL
-  ##vertices = x[,list(vertex)]
   setcolorder(vertices, c('vertex', setdiff(names(vertices), 'vertex')))
   setkey(vertices, vertex)
   vertices = unique(vertices)
@@ -873,7 +872,8 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
     system('gzip graph.dot', wait=F)
   }
   cat('Graph object time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-  return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges))
+  return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges,
+              vertices=vertices))
 }
 
 tableToMarkov = function(x, rank=0, path='.'){
@@ -1000,14 +1000,14 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   startTime = Sys.time()
   
   result =
-    list(
-        ##runtimes = b2,
-        messageEdges = g$messageEdges,
-        compEdges = g$compEdges,
-        assignments = assignments,
-        comms = comms,
-        globals=globals,
-        collectives = collectives)
+    list(##runtimes = b2,
+         messageEdges = g$messageEdges,
+         compEdges = g$compEdges,
+         vertices = g$vertices,
+         assignments = assignments,
+         comms = comms,
+         globals=globals,
+         collectives = collectives)
   if(saveResult){
     with(result, save(list=ls(), file=file.path(path,name)))
     cat('save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
