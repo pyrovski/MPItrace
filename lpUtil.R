@@ -95,53 +95,55 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
   task = merge(taskDuration, taskPower, all=T)
   rm(taskPower, taskDuration)
   
-  setkey(slice, e_uid, weight, power)
-  setkey(task, e_uid, lpWeight, lpPower)
-  f = function(a, b) abs(a-b) < 1e-8
-  edges = lapply(e_uids, function(u){
-    s = slice[J(u)]
-    if(nrow(s) == 1){
-      s[, frac := 1]
-      return(s)
-    }
-    lp = task[J(u)]
-
-    if(keepAll){
-      return(list(slice=s, lp=lp))
-    }
+  if(keepAll){
+    setkey(slice, e_uid)
+    setkey(task, e_uid)
+    edges = slice[task]
+  } else {
+    setkey(slice, e_uid, weight, power)
+    setkey(task, e_uid, lpWeight, lpPower)
     
-    unconstrained = lp[lpWeight > .9 & (lpWeight %% 1) < .1]
-    if(nrow(unconstrained) > 0){
-      cat('unconstrained weight(s)!\n')
-      print(unconstrained)
-    }
-    
-    ##!@todo this can be done with multiple e_uids at once
+    f = function(a, b) abs(a-b) < 1e-8
+    edges = lapply(e_uids, function(u){
+      s = slice[J(u)]
+      if(nrow(s) == 1){
+        s[, frac := 1]
+        return(s)
+      }
+      lp = task[J(u)]
+      
+      unconstrained = lp[lpWeight > .9 & (lpWeight %% 1) < .1]
+      if(nrow(unconstrained) > 0){
+        cat('unconstrained weight(s)!\n')
+        print(unconstrained)
+      }
+      
+      ##!@todo this can be done with multiple e_uids at once
 
-    ##! this needs to be approximate
-    ##m = s[lp, nomatch=0]
-    m = s[f(weight, lp$lpWeight) & f(power, lp$lpPower)]
-    if(nrow(m) > 0){
-      m[, frac := 1]
-      return(m)
-    }
+      ##! this needs to be approximate
+      ##m = s[lp, nomatch=0]
+      m = s[f(weight, lp$lpWeight) & f(power, lp$lpPower)]
+      if(nrow(m) > 0){
+        m[, frac := 1]
+        return(m)
+      }
 
-    ##!@todo figure out how to get Pyomo to be more precise with its output
+      ##!@todo figure out how to get Pyomo to be more precise with its output
 
-    ##! can re-adjust lp weight based on selected power
-    m = rbind(head(s[power < lp$lpPower], 1), tail(s[power > lp$lpPower], 1))
-    fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
-    slowFrac = 1 - fastFrac
-    m$frac = c(fastFrac, slowFrac)
-    ##! adjust weight by frac
-    m[, weight := weight * frac]
+      ##! can re-adjust lp weight based on selected power
+      m = rbind(head(s[power < lp$lpPower], 1), tail(s[power > lp$lpPower], 1))
+      fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
+      slowFrac = 1 - fastFrac
+      m$frac = c(fastFrac, slowFrac)
+      ##! adjust weight by frac
+      m[, weight := weight * frac]
 ###! m should contain two rows; one for each configuration neighboring
 ###! the LP-selected power/performance point
-    return(m)
-  })
-  if(!keepAll)
+      return(m)
+    })
     edges = rbindlist(edges)
-  
+  }
+
   list(
     ##result=result,
     ##slice=slice,
