@@ -84,9 +84,15 @@ mergeConfs = function(conf, entries){
   gc()
 
   collectives = lapply(result, '[[', 'collectives')
-  names(compEdges) = lapply(result, '[[', 'date')
+  names(collectives) = lapply(result, '[[', 'date')
   for(i in 1:length(result)) result[[i]]$collectives=NULL
   gc()
+
+  vertices = lapply(result, '[[', 'vertices')
+  names(vertices) = lapply(result, '[[', 'date')
+  for(i in 1:length(result)) result[[i]]$vertices=NULL
+  
+  ##!@todo match hashes in vertices tables
   
   rm(result)
  
@@ -132,7 +138,8 @@ mergeConfs = function(conf, entries){
        assignments=assignments,
        messageEdges=messageEdges,
        compEdges=compEdges,
-       collectives=collectives)
+       collectives=collectives,
+       vertices=vertices)
 }
 
 ## combine within confCols combinations. This will combine multiple
@@ -143,11 +150,20 @@ reduceConfs = function(x){
   by = c('uid',confCols)
   cat('Reducing between configs\n')
 
-  x$collectives = unique(x$collectives)
+  x$collectives = base::unique(x$collectives)
   if(length(x$collectives) > 1){
     stop('Unmatched collectives\n')
   }
   x$collectives = x$collectives[[1]]
+
+  x$vertices = base::unique(x$vertices)
+  if(length(x$vertices) > 1){
+    warning('Unmatched hashes\n', immediate.=T)
+    if(length(unique(lapply(x$vertices, function(v) v[, list(vertex, label)]))) > 1){
+      stop('Unmatchable hashes\n')
+    }
+  }
+  x$vertices = x$vertices[[1]]
 
   ## all message edges should be identical between runs
   if(any(is.na(x$messageEdges))){
@@ -282,7 +298,7 @@ reduceConfs = function(x){
   gc()
 
 ###! renumber vertices from 1:n
-  x$vertices = x$edges_inv[, list(vertex=union(src, dest))][order(vertex)]
+  ##x$vertices = x$edges_inv[, list(vertex=union(src, dest))][order(vertex)]
   x$vertices$newVertex = 1:nrow(x$vertices)
   setkey(x$vertices, vertex)
   setkey(x$edges_inv, src)
@@ -322,6 +338,9 @@ reduceConfs = function(x){
     x$schedule[is.na(s_uid),
                list(start=head(start, 1),via=-head(src, 1)), by=src]
   setnames(x$slackVertices, c('vertex', 'start', 'via'))
+  x$slackVertices$hash = as.character(NA)
+  x$slackVertices$label= as.character(NA)
+  setcolorder(x$slackVertices, names(x$vertices))
   cat(x$key, 'Slack time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(x)
 }
