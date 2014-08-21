@@ -195,11 +195,17 @@ lpMerge = function(slices, name){
       e$edges$ts = name
       e$edges
     }, mc=T))
+  for(i in 1:length(slices))
+    slices[[i]]$edges = NULL
+  
   vertices =
     rbindlist(napply(slices, function(e, name) {
       e$vertices$ts =name
       e$vertices
     }, mc=T))
+  for(i in 1:length(slices))
+    slices[[i]]$vertices = NULL
+  
   tsDuration = vertices[, .SD[which.max(start)], by=ts]
   tsDuration[, vertex := NULL]
   setnames(tsDuration, 'start', 'tsEnd')
