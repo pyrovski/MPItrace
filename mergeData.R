@@ -302,10 +302,10 @@ reduceConfs = function(x){
   x$vertices$newVertex = 1:nrow(x$vertices)
   setkey(x$vertices, vertex)
   setkey(x$edges_inv, src)
-  x$edges_inv = x$edges_inv[x$vertices]
+  x$edges_inv = x$edges_inv[x$vertices[, list(vertex, newVertex)]]
   x$edges_inv = x$edges_inv[, c('src', 'newVertex') := list(newVertex, NULL)]
   setkey(x$edges_inv, dest)
-  x$edges_inv = x$edges_inv[x$vertices]
+  x$edges_inv = x$edges_inv[x$vertices[, list(vertex, newVertex)]]
   x$edges_inv = x$edges_inv[, c('dest', 'newVertex') := list(newVertex, NULL)]
   x$vertices[, c('vertex', 'newVertex') := list(newVertex, NULL)]
   
