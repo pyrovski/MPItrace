@@ -53,6 +53,7 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
   setkey(vertexStartTimes, vertex)
 
   tryCatch(load(timesliceFile), finally=NULL)
+    
   vertices = slice[, list(vertex=union(src, dest))]
   setkey(vertices, vertex)
   vertices = vertexStartTimes[vertices]
@@ -157,6 +158,7 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
 timeStr = '[0-9]+[.][0-9]+'
 
 ##!@todo save results from this function, check for newer inputs than previous result
+##!@todo make sure result files are newer than csv and Rsave inputs
 readCommandResults = function(command, ...){
   cat(command, '\n')
   resultFiles =
@@ -228,17 +230,13 @@ lpMerge = function(slices, name){
       e$edges$ts = name
       e$edges
     }, mc=T))
-  for(i in 1:length(slices))
-    slices[[i]]$edges = NULL
   
   vertices =
     rbindlist(napply(slices, function(e, name) {
       e$vertices$ts =name
       e$vertices
     }, mc=T))
-  for(i in 1:length(slices))
-    slices[[i]]$vertices = NULL
-  
+
   tsDuration = vertices[, .SD[which.max(start)], by=ts]
   tsDuration[, vertex := NULL]
   setnames(tsDuration, 'start', 'tsEnd')
@@ -287,18 +285,19 @@ lpMerge = function(slices, name){
     } else {
       .SD
     }, by=list(e_uid, ts)]
+  e_uid_map = data.table(orig=edges$e_uid)
   edges[, e_uid := as.character(e_uid)]
   edges[, e_uid := paste(ts, e_uid, sep='_')]
   edges[second == T, e_uid := paste(e_uid, '.', sep='')]
+  e_uid_map$new = edges$e_uid
   
   ##!@todo assign weights to slack edges
 
   vertices = edges[, list(vertex=union(src, dest))]
   setkey(vertices, vertex)
   setkey(edges, src)
-  vertices[edges[,list(src, start)], start:=start]
+  vertices = vertices[unique(edges[,list(src, start)])]
   vertices[J('2'), start:=edges[dest=='2', max(start+weight)]]
-  ##!@todo find source of and fix NA vertex start times
 
   pt = powerTime(edges, vertices)
   plotPowerTime(pt, name=name)
