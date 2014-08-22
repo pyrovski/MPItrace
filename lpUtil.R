@@ -298,6 +298,7 @@ lpMerge = function(slices, name){
   setkey(edges, src)
   vertices[edges[,list(src, start)], start:=start]
   vertices[J('2'), start:=edges[dest=='2', max(start+weight)]]
+  ##!@todo find source of and fix NA vertex start times
 
   pt = powerTime(edges, vertices)
   plotPowerTime(pt, name=name)
@@ -305,6 +306,18 @@ lpMerge = function(slices, name){
   return(list(edges = edges,
               vertices = vertices,
               pt = pt))
+}
+
+lpMergeAll = function(commands_powers){
+  napply(commands_powers,
+         function(x, name){
+           command = name
+           napply(x,
+                  function(x, name){
+                    powerLimit = name
+                    lpMerge(x, name=paste(command, powerLimit))
+                  })
+         })
 }
 
 if(!interactive()){
