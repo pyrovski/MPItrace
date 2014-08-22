@@ -186,13 +186,13 @@ timeslice = function(sched, vertices, edges, criticalPath,
     stop('invalid deadline!\n')
   }
   sched[, wslack:=deadline-start]
-  maxStart = max(sched[,start])
-  if(ts_start > maxStart)
+  maxDeadline = max(sched[,deadline])
+  if(ts_start > maxDeadline)
     stop('Start past last task')
 
   ranks = unique(sched[, rank])
   
-  sliceTimes = head(seq(ts_start, maxStart, length), n)
+  sliceTimes = head(seq(ts_start, maxDeadline, length), n)
   setkey(sched, e_uid)
   setkey(edges, e_uid)
 
