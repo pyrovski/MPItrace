@@ -94,11 +94,15 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
   setkey(taskDuration, e_uid)
   task = merge(taskDuration, taskPower, all=T)
   rm(taskPower, taskDuration)
+
+  result = list()
   
   if(keepAll){
     setkey(slice, e_uid)
     setkey(task, e_uid)
-    edges = slice[task]
+    ##edges = slice[task]
+    result$edges = slice
+    result$lp = task
   } else {
     setkey(slice, e_uid, weight, power)
     setkey(task, e_uid, lpWeight, lpPower)
@@ -142,13 +146,11 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
       return(m)
     })
     edges = rbindlist(edges)
+    result$edges = edges
   }
 
-  list(
-    ##result=result,
-    ##slice=slice,
-    vertices=vertices[order(start)],
-    edges=edges)
+  result$vertices=vertices[order(start)]
+  result
 }
 
 
@@ -188,6 +190,37 @@ lpGo = function(...){
   results <<- nnapply(commands, readCommandResults, ...)
   NULL
 }
+
+## intended to process results of lpGo(keepAll=T), simulating some
+## runtime power balancing algorithms. This differs from powerStats()
+## because of the following:
+##
+## - timeslices have not been combined
+##
+
+
+asdf = function(ts, rankPowerLimits){
+  ## unlimited power
+  minTime = ts$edges[, .SD[which.min(weight)], by=e_uid]
+  
+  minPower = ts$edges[, .SD[which.min(power)], by=e_uid]
+  ## pl1: uniform power, maxConf per edge -> RAPL
+  ##
+  ## pl2: uniform power, intelligent conf selection (already
+  ## implemented in powerStats())
+  ##
+  ## pl3: nonuniform power, maxConf per edge -> RAPL
+  ##
+  ## pl4: nonuniform power, intelligent conf selection
+  ##
+
+  pl2 =
+    ts$edges[, .SD[power <= rankPowerLimits[rank] |
+                   power == min(power)][which.min(weight)], by=e_uid]
+  list(minTime=minTime, minPower=minPower, pl2=pl2, vertices=ts$vertices)
+}
+
+##!@todo run all timeslices from one powerlimit set from each command
 
 lpMerge = function(slices, name){
   edges =
@@ -238,7 +271,11 @@ lpMerge = function(slices, name){
   
   ## assign new vertices to split-config edges from each timeslice,
   ## rename edge uids to be unique across timeslices
-  edges = edges[order(ts, e_uid, -frac)]
+  if('frac' %in% names(edges))
+    edges = edges[order(ts, e_uid, -frac)]
+  else
+    edges = edges[order(ts, e_uid)]
+  
   edges[, second := F]
   edges =
     edges[,if(.N ==2){
