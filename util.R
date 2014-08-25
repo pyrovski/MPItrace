@@ -121,20 +121,28 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
 
   if(!limitedOnly){
     ##fastest
-    powersMinTime = mcparallel(f(edges[,.SD[which.min(weight)],by=e_uid]))
+    powersMinTime =
+      mcparallel(f(edges[,.SD[which.min(weight)],by=e_uid]), name='powersMinTime')
     
     ## max power
-    powersMaxPower = mcparallel(f(edges[,.SD[which.max(power)],by=e_uid]))
+    powersMaxPower =
+      mcparallel(f(edges[,.SD[which.max(power)],by=e_uid]), name='powersMaxPower')
 
     ## min power
-    powersMinPower = mcparallel(f(edges[,.SD[which.min(power)],by=e_uid]))
+    powersMinPower =
+      mcparallel(f(edges[,.SD[which.min(power)],by=e_uid]), name='powersMinPower')
 
-    mccollect()
+    mcresult = mccollect()
     
     result =
-      list(minTime  = powersMinTime,
-           maxPower = powersMaxPower,
-           minPower = powersMinPower)
+      list(powersMinTime = mcresult[[as.character(powersMinTime$pid)]],
+           powersMaxPower = mcresult[[as.character(powersMaxPower$pid)]],
+           powersMinPower = mcresult[[as.character(powersMinPower$pid)]])
+    
+    ## result =
+    ##   list(minTime  = powersMinTime,
+    ##        maxPower = powersMaxPower,
+    ##        minPower = powersMinPower)
   } else
     result = list()
   
@@ -147,29 +155,28 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
 ### per-rank power constraints, intelligent config 3: initially
 ### uniform per-rank power constraints with excess reallocation (this
 ### requires event simulation).
-    result =
-      c(result,
-        mclapply(powerLimits, function(powerLimit){
-          ##!@todo get maxconf.  This could depend on all confCols.
-          
-          ## this may violate the power constraint. !@todo warn on violation
-          
-          ##!@todo retain inefficient configurations for pl1
-          
-          
-          pl2 =
-            edges[, .SD[power <= powerLimit/nRanks |
-                        power == min(power)][which.min(weight)],
-                  by=e_uid]
-          
-          pl2 = f(pl2)
-          name = paste(powerLimit, 'pl2', sep='_')
-          result[[name]] = pl2
-          result
-        }))
+    result_pl =
+      mclapply(powerLimits, function(powerLimit){
+        ##!@todo get maxconf.  This could depend on all confCols.
+        
+        ## this may violate the power constraint. !@todo warn on violation
+        
+        ##!@todo retain inefficient configurations for pl1
+        
+        pl2 =
+          edges[, .SD[power <= powerLimit/nRanks |
+                      power == min(power)][which.min(weight)],
+                by=e_uid]
+        
+        pl2 = f(pl2)
+      })
+    names(result_pl) = paste(powerLimits, 'pl2', sep='_')
+    result = c(result, result_pl)
+    rm(result_pl)
   }
-  if(!missing(name))
+  if(!missing(name)){
     names(result) = paste(name, names(result))
+  }
   napply(result, plotPowerTime, mc=T)
   return(result)
 }
