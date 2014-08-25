@@ -349,8 +349,10 @@ writeSlices = function(x, sliceDir='csv'){
   dir.create(sliceDir, showWarnings=F)
   options(scipen=7)
   firstCols = c('e_uid', confCols)
-  confName = gsub('[/.]', '_', x$key)
-
+  confName = gsub('[/. ]', '_', x$key)
+  files = Sys.glob(paste(file.path(sliceDir,confName), '*', sep=''))
+  mclapply(files, unlink)
+  
 ###!@todo this would use less memory if we computed one slice at a time
   slices = timeslice(x$schedule, rbind(x$vertices, x$slackVertices), x$edges)
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
@@ -460,10 +462,23 @@ go = function(){
     cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     ##powerStats(reduced$edges)
-    p = powerTime(reduced$sched, rbind(reduced$vertices, reduced$slackVertices))
-    reduced$maxPower = max(p[, power])
-    ## this is not entirely precise
-    minPower = min(reduced$edges[power > 0, power]) * entry$ranks
+    ##p = powerTime(reduced$sched, rbind(reduced$vertices, reduced$slackVertices))
+
+    reduced$maxPower =
+      sum(reduced$edges[,list(e_uid, power)][,.SD[which.max(power)],
+                                             by=e_uid][reduced$edges_inv[,
+                                               list(e_uid, rank)]][,
+                                                                   .SD[which.max(power)],
+                                                                   by=rank]$power)
+
+    setkey(reduced$edges, e_uid)
+    setkey(reduced$edges_inv, e_uid)
+    reduced$minPower =
+      sum(reduced$edges[,list(e_uid, power)][,.SD[which.min(power)],
+                                             by=e_uid][reduced$edges_inv[,
+                                               list(e_uid, rank)]][,
+                                                                   .SD[which.max(power)],
+                                                                   by=rank]$power)
     cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     cat(entry$key, 'Saving\n')
@@ -479,11 +494,11 @@ go = function(){
     cat(entry$key, 'Done writing timeslices\n')
     cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     ##return(reduced)
+    NULL
   }
   setkeyv(entries, entryCols)
   ##!@todo launch these as separate jobs
   rowApply(entrySpace, f)
-  ##names(result) <<- entrySpace$key
   NULL
 }
 
