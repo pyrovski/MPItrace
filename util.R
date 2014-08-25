@@ -82,9 +82,8 @@ plotPowerTime = function(pt, name){
   NULL
 }
 
-powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F){
-### need to assign start times for each set
-
+powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
+### need to assign start times for each set 
   ##!@todo measure this in runtime in post-init
   ##!@todo this should be processor-specific
   activeWaitConf = edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
@@ -122,14 +121,16 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F){
 
   if(!limitedOnly){
     ##fastest
-    powersMinTime = f(edges[,.SD[which.min(weight)],by=e_uid])
+    powersMinTime = mcparallel(f(edges[,.SD[which.min(weight)],by=e_uid]))
     
     ## max power
-    powersMaxPower = f(edges[,.SD[which.max(power)],by=e_uid])
+    powersMaxPower = mcparallel(f(edges[,.SD[which.max(power)],by=e_uid]))
 
     ## min power
-    powersMinPower = f(edges[,.SD[which.min(power)],by=e_uid])
+    powersMinPower = mcparallel(f(edges[,.SD[which.min(power)],by=e_uid]))
 
+    mccollect()
+    
     result =
       list(minTime  = powersMinTime,
            maxPower = powersMaxPower,
@@ -146,25 +147,30 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F){
 ### per-rank power constraints, intelligent config 3: initially
 ### uniform per-rank power constraints with excess reallocation (this
 ### requires event simulation).
-    for(powerLimit in powerLimits){
-      ##!@todo get maxconf.  This could depend on all confCols.
-
-      ## this may violate the power constraint. !@todo warn on violation
-
-      ##!@todo retain inefficient configurations for pl1
-
-      
-      pl2 =
-        edges[, .SD[power <= powerLimit/nRanks |
-                    power == min(power)][which.min(weight)],
-              by=e_uid]
-
-      pl2 = f(pl2)
-      name = paste(powerLimit, 'pl2', sep='_')
-      result[[name]] = pl2
-    }
+    result =
+      c(result,
+        mclapply(powerLimits, function(powerLimit){
+          ##!@todo get maxconf.  This could depend on all confCols.
+          
+          ## this may violate the power constraint. !@todo warn on violation
+          
+          ##!@todo retain inefficient configurations for pl1
+          
+          
+          pl2 =
+            edges[, .SD[power <= powerLimit/nRanks |
+                        power == min(power)][which.min(weight)],
+                  by=e_uid]
+          
+          pl2 = f(pl2)
+          name = paste(powerLimit, 'pl2', sep='_')
+          result[[name]] = pl2
+          result
+        }))
   }
-  napply(result, plotPowerTime)
+  if(!missing(name))
+    names(result) = paste(name, names(result))
+  napply(result, plotPowerTime, mc=T)
   return(result)
 }
 
