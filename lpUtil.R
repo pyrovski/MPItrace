@@ -275,6 +275,7 @@ lpMerge = function(slices, name){
     edges = edges[order(ts, e_uid)]
   
   edges[, second := F]
+  edges[, orig_e_uid := e_uid]
   edges =
     edges[,if(.N ==2){
       e = copy(.SD)
@@ -315,11 +316,11 @@ lpMergeAll = function(commands_powers){
                   function(x, name){
                     powerLimit = name
                     lpMerge(x, name=paste(command, powerLimit))
-                  })
+                  }, mc=T)
          })
 }
 
 if(!interactive()){
   lpGo()
-  results = lapply(results, function(e) lapply(e, lpMerge))
+  results = lpMergeAll(results)
 }
