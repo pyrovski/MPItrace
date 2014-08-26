@@ -45,7 +45,7 @@ readLP = function(filename){
   a
 }
 
-reconcileLP = function(resultFile, timesliceFile, keepAll=F){
+reconcileLP = function(resultFile, timesliceFile, mode='split'){
   result = readLP(resultFile)
   vertexStartTimes = result$Solution[[2]]$Variable$vertexStartTime
   result$Solution[[2]]$Variable$vertexStartTime = NULL
@@ -98,7 +98,7 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
 
   result = list()
   
-  if(keepAll){
+  if(mode=='keepAll'){
     setkey(slice, e_uid)
     setkey(task, e_uid)
     ##edges = slice[task]
@@ -134,17 +134,25 @@ reconcileLP = function(resultFile, timesliceFile, keepAll=F){
       }
 
       ##!@todo figure out how to get Pyomo to be more precise with its output
-
       ##! can re-adjust lp weight based on selected power
       m = rbind(head(s[power < lp$lpPower], 1), tail(s[power > lp$lpPower], 1))
-      fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
-      slowFrac = 1 - fastFrac
-      m$frac = c(fastFrac, slowFrac)
-      ##! adjust weight by frac
-      m[, weight := weight * frac]
+      if(mode=='combined'){
+        ## find a single config that is closest to the LP
+        m[, dist := sqrt(((power-lp$lpPower)/lp$lpPower)^2+((weight - lp$lpWeight)/lp$lpWeight)^2)]
+        m = m[which.min(dist)]
+        m$dist = NULL
+        m$frac=1
+        return(m)
+      } else { 
+        fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
+        slowFrac = 1 - fastFrac
+        m$frac = c(fastFrac, slowFrac)
+        ##! adjust weight by frac
+        m[, weight := weight * frac]
 ###! m should contain two rows; one for each configuration neighboring
 ###! the LP-selected power/performance point
-      return(m)
+        return(m)
+      }
     })
     edges = rbindlist(edges)
     result$edges = edges
@@ -193,7 +201,7 @@ lpGo = function(...){
   NULL
 }
 
-## intended to process results of lpGo(keepAll=T), simulating some
+## intended to process results of lpGo(mode='keepAll'), simulating some
 ## runtime power balancing algorithms. This differs from powerStats()
 ## because of the following:
 ##
@@ -222,8 +230,9 @@ asdf = function(ts, rankPowerLimits){
   list(minTime=minTime, minPower=minPower, pl2=pl2, vertices=ts$vertices)
 }
 
-##!@todo run all timeslices from one powerlimit set from each command
-
+##!@todo this function assumes that we don't alter the schedule from
+##!the LP.  For modes other than the default, this may not be true,
+##!and we need to recompute start times and slack edges.
 lpMerge = function(slices, name){
   edges =
     rbindlist(napply(slices, function(e, name) {
