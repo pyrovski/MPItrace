@@ -464,6 +464,8 @@ go = function(){
     ##powerStats(reduced$edges)
     ##p = powerTime(reduced$sched, rbind(reduced$vertices, reduced$slackVertices))
 
+    setkey(reduced$edges, e_uid)
+    setkey(reduced$edges_inv, e_uid)
     reduced$maxPower =
       sum(reduced$edges[,list(e_uid, power)][,.SD[which.max(power)],
                                              by=e_uid][reduced$edges_inv[,
@@ -471,8 +473,6 @@ go = function(){
                                                                    .SD[which.max(power)],
                                                                    by=rank]$power)
 
-    setkey(reduced$edges, e_uid)
-    setkey(reduced$edges_inv, e_uid)
     reduced$minPower =
       sum(reduced$edges[,list(e_uid, power)][,.SD[which.min(power)],
                                              by=e_uid][reduced$edges_inv[,
