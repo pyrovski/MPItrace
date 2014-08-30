@@ -197,8 +197,7 @@ lpGo = function(...){
   load('../mergedEntries.Rsave', envir=.GlobalEnv)
   files = list.files(pattern='.*[.]results$')
   commands <<- unique(sub(paste('_', timeStr, '[.]p.*w[.]results', sep=''),'',files))
-  results <<- nnapply(commands, readCommandResults, ...)
-  NULL
+  nnapply(commands, readCommandResults, ...)
 }
 
 ## intended to process results of lpGo(mode='keepAll'), simulating some
@@ -330,6 +329,26 @@ lpMergeAll = function(commands_powers){
 }
 
 if(!interactive()){
-  lpGo()
-  results = lpMergeAll(results)
+  results = lpGo()
+  resultsMerged = lpMergeAll(results)
+  resultsOneConf = lpGo(mode='combined')
+  resultsMergedOneConf = lpMergeAll(resultsOneConf)
+}
+
+## match one-config tasks and two-config tasks, including schedule
+## creation for one-config tasks.
+##!@todo do we need to explicitly create slack edges? Yes.
+matchOneTwo = function(one, two){
+  one = one$edges
+  two = two$edges
+  oneSched = rebuildScheduleWithSlack(one)
+  one = oneSched$sched
+  
+  oneConf = one$edges[power > 0 & weight > 0, list(ts,orig_e_uid,power,weight)]
+  twoConf = two[power > 0 & weight > 0, list(ts,orig_e_uid,power,weight)]
+  setkey(oneConf, ts, orig_e_uid)
+  setkey(twoConf, ts, orig_e_uid)
+  d = oneConf[twoConf[,list(ts,orig_e_uid, p2=power, w2=weight)]]
+  d[, c('pr','wr') := list(power/p2,weight/w2)]
+  list(one=one, oneConf=oneConf, twoConf = twoConf, d=d)
 }
