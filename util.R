@@ -82,6 +82,30 @@ plotPowerTime = function(pt, name){
   NULL
 }
 
+rebuildScheduleWithSlack = function(e, activeWaitConf){
+  sched = getSchedule(e)
+  schedVertices = sched$vertices
+  sched = slackEdges(sched$edges, activeWaitConf, sched$critPath)
+  slackVertices =
+    sched[is.na(s_uid),
+          list(start=head(start, 1),via=-head(src, 1)), by=src]
+  setnames(slackVertices, c('vertex', 'start', 'via'))
+
+  ## nullify 0-length slack edges
+  ranks = unique(sched[, rank])
+  setkey(sched, rank)
+  sched = rbindlist(mclapply(ranks, function(r){
+    sched = sched[J(r)][order(start, -e_uid)]
+    dupes = duplicated(sched[, start])
+    sched[dupes, power := 0]
+    sched
+  }))
+
+  vertices = rbind(schedVertices, slackVertices)
+  pt = powerTime(sched, vertices)
+  list(pt=pt, sched=sched, vertices=vertices)
+}
+
 powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
 ### need to assign start times for each set 
   ##!@todo measure this in runtime in post-init
@@ -94,29 +118,11 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
   
   cols = c('e_uid', 's_uid', 'd_uid', 'src', 'dest', 'rank', 'type')
   cols = intersect(cols, names(edges_inv))
-  
+
   f = function(e){
     e = e[edges_inv[, cols, with=F]]
-    sched = getSchedule(e)
-    schedEdges = sched$edges
-    schedVertices = sched$vertices
-    sched = slackEdges(schedEdges, activeWaitConf, sched$critPath)
-    slackVertices =
-      sched[is.na(s_uid),
-            list(start=head(start, 1),via=-head(src, 1)), by=src]
-    setnames(slackVertices, c('vertex', 'start', 'via'))
-
-    ## nullify 0-length slack edges
-    ranks = unique(sched[, rank])
-    setkey(sched, rank)
-    sched = rbindlist(mclapply(ranks, function(r){
-      sched = sched[J(r)][order(start, -e_uid)]
-      dupes = duplicated(sched[, start])
-      sched[dupes, power := 0]
-      sched
-    }))
-    
-    powerTime(sched, rbind(schedVertices, slackVertices))
+    result = rebuildScheduleWithSlack(e, activeWaitConf)
+    result$pt
   }
 
   if(!limitedOnly){
@@ -302,8 +308,11 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   if(any(edges[, list(count=nrow(.SD)), by=e_uid]$count > 1))
     stop('Duplicate e_uids in getSchedule\n')
 
-  if(any(diff(sort(vertices[, vertex])) > 1) || !1 %in% vertices[, vertex])
-      stop('Vertices must be numbered 1:nrow(vertices)\n')
+  numericVertices = T
+  if(inherits(vertices$vertex, 'character'))
+    numericVertices = F
+  else if(any(diff(sort(vertices[, vertex])) > 1) || !1 %in% vertices[, vertex])
+    stop('Vertices must be numbered 1:nrow(vertices)\n')
   
   cat('Graph construction\n')
   setcolorder(edges,
@@ -312,17 +321,45 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     stop('Negative-weight edge(s)!')
   }
   g = graph.data.frame(edges[,c('src','dest'), with=F])
-  gd = lapply(get.data.frame(g, what='both'), as.data.table)
-  gd$vertices$name = as.numeric(gd$vertices$name)
-  cat('Topological ordering\n')
-  ts_order = topological.sort(g)
   if(no.clusters(g) > 1)
     stop('Graph has more than one cluster!', immediate. = T)
+  gd = lapply(get.data.frame(g, what='both'), as.data.table)
+  if(numericVertices)
+    gd$vertices$name = as.numeric(gd$vertices$name)
+  cat('Topological ordering\n')
+  ts_order = topological.sort(g)
   rm(g)
   
-  setkey(vertices)
-  vertices_TO = data.table::copy(vertices[J(gd$vertices[ts_order])])
+  setkey(vertices, vertex)
+  vertices_TO = data.table::copy(vertices[J(gd$vertices[ts_order]), list(vertex)])
   rm(gd); gc()
+
+  if(!numericVertices){
+    ## renumber vertices temporarily
+    vertexMap = vertices_TO[, list(vertex)]
+    vertexMap[, newVertex := .GRP, by=vertex]
+    setkey(vertexMap, vertex)
+    vertices = vertices[vertexMap]
+    vertices$vertex = NULL
+    setnames(vertices, 'newVertex', 'vertex')
+    setkey(vertices, vertex)
+
+    setkey(vertices_TO, vertex)
+    vertices_TO = vertices_TO[vertexMap]
+    vertices_TO$vertex = NULL
+    setnames(vertices_TO, 'newVertex', 'vertex')
+    setkey(vertices_TO, vertex)
+    
+    setkey(edges, src)
+    edges = vertexMap[edges]
+    edges$vertex = NULL
+    setnames(edges, 'newVertex', 'src')
+
+    setkey(edges, dest)
+    edges = vertexMap[edges]
+    edges$vertex = NULL
+    setnames(edges, 'newVertex', 'dest')
+  }
 
   setkey(edges, src)
 
@@ -331,10 +368,14 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   startTime = Sys.time()
 
   vertices$start = -Inf
-  vertices[J(1), start := 0]
-  vertices[, via:=as.integer(NA)]
+  vertices[J(vertices_TO[1, list(vertex)]), start := 0]
+  if(numericVertices){
+    vertices[, via:=as.integer(NA)]
+  } else
+    vertices[, via:=as.character(NA)]
+
   count = 0
-  progress = 0
+  progress = -1
   
 ###!@todo this could be faster if we selected only the relevant set of
 ###!vertices for each src, then merged after the loop
@@ -351,7 +392,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     ## get start time for src vertex
     v = vertices[vertex, list(src=vertex, start)]
     setkey(v, src)      
-    outEdges = edges[v, list(src, dest, e_uid, start, weight)] # src is already included
+    outEdges = edges[v, list(src, dest, e_uid, start, weight)]
     if(nrow(outEdges) < 1)
       next
     setkey(outEdges, src)
@@ -372,8 +413,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     vertices[outEdges[,vertex], c('vertex', 'start', 'via') := outEdges]
     
     if(!count %% 1000){
-      n_progress = round(count/nrow(vertices)*100)
-      if(progress != n_progress)
+      if(progress != (n_progress <- round(count/nrow(vertices)*100)))
         cat(n_progress, '%\n')
       progress = n_progress
     }
@@ -381,12 +421,42 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   }
   cat(100, '%\n')
 
+  if(!numericVertices){
+    ## undo vertex renumbering
+    setkey(vertexMap, newVertex)
+    
+    setnames(vertices, 'vertex', 'newVertex')
+    setkey(vertices, newVertex)
+    vertices = vertices[vertexMap]
+    vertices$newVertex = NULL
+
+    setnames(vertices_TO, 'vertex', 'newVertex')
+    setkey(vertices_TO, newVertex)
+    vertices_TO = vertices_TO[vertexMap]
+    vertices_TO$newVertex = NULL
+
+    setnames(edges, 'src', 'newVertex')
+    setkey(edges, newVertex)
+    edges = vertexMap[edges]
+    edges$newVertex = NULL
+    setnames(edges, 'vertex', 'src')
+    
+    setnames(edges, 'dest', 'newVertex')
+    setkey(edges, newVertex)
+    edges = vertexMap[edges]
+    edges$newVertex = NULL
+    setnames(edges, 'vertex', 'dest')
+
+    rm(vertexMap)
+  }
+
 ###!@todo this assumes edges start as soon as their dependencies are
 ###!satisfied. If we want to schedule from the back, edges should
 ###!start as late as possible; for each edge:
 ###! start = vertices[J(dest), start] - weight
   setkey(vertices, vertex)
 ##  edges = edges[vertices[, list(vertex, start)]]
+  setkey(edges, src)
   edges = vertices[, list(vertex, start)][edges]
   setnames(edges, 'vertex', 'src')
  
@@ -402,9 +472,10 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 
     setkey(edges, e_uid)
     setkey(vertices, vertex)
-    c_vertex = 2
+    c_vertex = tail(vertices_TO[, vertex], 1)
+    head_vertex = vertices_TO[1, vertex]
     critPath = c()
-    while(c_vertex != 1){
+    while(c_vertex != head_vertex){
       v = vertices[J(c_vertex)][, via]
       c_vertex = edges[J(v), src, mult='first']
       critPath = c(v, critPath)
