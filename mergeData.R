@@ -378,20 +378,37 @@ writeSlices = function(x, sliceDir='csv'){
                 file=file.path(sliceDir, paste(sliceName, '.vertices.csv', sep='')),
                 row.names=F, quote=F, sep=',')
 
-    write.table(slice[,list(
-      ##!@todo this is easier to get from x$schedule
-      src=head(src, 1), dest=head(dest, 1),
-      edge_rank=head(rank,1),
-      ## but not these
-      minTime=min(weight),
-      maxTime=max(weight),
-      minPower=min(power),
-      maxPower=max(power),
-      left=head(left,1),
-      right=head(right,1)),
-                      by=e_uid],
+    if(sliceTime != 'ILP')
+      tmpSlice =
+        slice[,list(
+          ##!@todo this is easier to get from x$schedule
+          src=head(src, 1), dest=head(dest, 1),
+          edge_rank=head(rank,1),
+          ## but not these
+          minTime=min(weight),
+          maxTime=max(weight),
+          minPower=min(power),
+          maxPower=max(power),
+          left=head(left,1),
+          right=head(right,1)),
+              by=e_uid]
+    else
+      tmpSlice =
+        slice[,list(
+          ##!@todo this is easier to get from x$schedule
+          src=head(src, 1), dest=head(dest, 1),
+          edge_rank=head(rank,1),
+          ## but not these
+          minTime=min(weight),
+          maxTime=max(weight),
+          minPower=min(power),
+          maxPower=max(power)),
+              by=e_uid]
+    write.table(tmpSlice,
                 file=file.path(sliceDir, paste(sliceName, '.edges.csv', sep='')),
                 row.names=F, quote=F, sep=',')
+    rm(tmpSlice)
+    
     write.table(slice[,c(firstCols, 'weight', 'power'),with=F],
                 file=file.path(sliceDir, paste(sliceName, '.edge_weights.csv', sep='')),
                 row.names=F, quote=F, sep=',')
@@ -412,6 +429,9 @@ writeSlices = function(x, sliceDir='csv'){
   }
   mclapply(names(slices), function(sliceTime)
            writeSlice(slices[[sliceTime]], sliceTime))
+  setkey(x$edges, e_uid)
+  setkey(x$edges_inv, e_uid)
+  writeSlice(x$edges[x$edges_inv], sliceTime = 'ILP')
   confName
 }
 
