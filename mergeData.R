@@ -431,6 +431,21 @@ writeSlices = function(x, sliceDir='csv'){
            writeSlice(slices[[sliceTime]], sliceTime))
   setkey(x$edges, e_uid)
   setkey(x$edges_inv, e_uid)
+
+  stop('fixme')
+  ##!@todo add slack edges to table passed to writeSlice for ILP
+  ## setkey(result, e_uid)
+  ## if(any(result[, e_uid] < 0)){
+  ##   result =
+  ##     rbind(edges[result[e_uid > 0]], sched[, names(edges), with=F][result[e_uid < 0]])
+  ## } else
+  ##   result = edges[result]
+  ## result[,c('weight', 'oWeight', 'frac') := list(frac*weight, weight, NULL)]
+  ## if(nrow(result[weight < 0]) > 0)
+  ##   stop('Negative-weight edge(s)\n')
+  ## setkey(result, e_uid)
+  ## result = result[sched[, list(e_uid, src, dest, rank, type)]]
+
   writeSlice(x$edges[x$edges_inv], sliceTime = 'ILP')
   confName
 }
