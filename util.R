@@ -192,10 +192,6 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
 ## never be bisected by a timeslice. They are important to include
 ## because they contribute to power consumption.
 
-##!@todo for the following situation, make sure to include the
-##!preceding slack edge in the second timeslice:
-##|        x|xx      x|x          
-##|   xxxxx |  xxxxxx |            
 timeslice = function(sched, vertices, edges, criticalPath,
   ts_start=0, length=.01, n=Inf){
   setkey(vertices, vertex)
@@ -552,13 +548,14 @@ pareto = function(edges){
   setkey(edges, e_uid)
   e_uid_count = length(unique(edges[, e_uid]))
 
-  ##!return the rows with configurations on the pareto frontier for each edge uid
+  ## return the rows with configurations on the pareto frontier for each edge uid
   .pareto = function(e){
     if(e %% 1000 == 0)
       cat('e_uid', e, 'of', e_uid_count, '\n')
+    ## get Pareto frontier; note that this is not necessarily piecewise linear
     result = edges[J(e)][order(weight, power)][!duplicated(cummin(power))]
 
-    ##!@todo reduce configurations within .5% of each other
+    ## reduce configurations within .5% of each other
     ##result = result[chull(signif(result[,list(weight,power)], 2))][order(weight, power)]
 
     if(nrow(result) > 1){
@@ -575,7 +572,7 @@ pareto = function(edges){
       result = head(result, -1)
       if(nrow(result) > 2){
         result[, slope := c(Inf, diff(power)/diff(weight))]
-        ##!@todo remove neighboring similar slopes
+        ## remove neighboring similar slopes
         repeat{
           diffSlope = diff(result[, slope])
           sel = abs(diffSlope) <= 1e-7
