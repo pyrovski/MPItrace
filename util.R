@@ -483,7 +483,9 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
               critPath=unname(unlist(critPath))))
 }
 
-##!@todo this is now the longest-running stage
+##!@todo this is now the longest-running stage?
+##!@todo add option for pre-task slack (in addition to post-task slack).
+##! We can't schedule from the back until this is done.
 slackEdges = function(schedule, activeWaitConf, critPath){
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power.
