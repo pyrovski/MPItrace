@@ -430,23 +430,19 @@ writeSlices = function(x, sliceDir='csv'){
   mclapply(names(slices), function(sliceTime)
            writeSlice(slices[[sliceTime]], sliceTime))
   setkey(x$edges, e_uid)
-  setkey(x$edges_inv, e_uid)
-
-  stop('fixme')
+  setkey(x$schedule, e_uid)
+  
   ##!@todo add slack edges to table passed to writeSlice for ILP
-  ## setkey(result, e_uid)
-  ## if(any(result[, e_uid] < 0)){
-  ##   result =
-  ##     rbind(edges[result[e_uid > 0]], sched[, names(edges), with=F][result[e_uid < 0]])
-  ## } else
-  ##   result = edges[result]
-  ## result[,c('weight', 'oWeight', 'frac') := list(frac*weight, weight, NULL)]
-  ## if(nrow(result[weight < 0]) > 0)
-  ##   stop('Negative-weight edge(s)\n')
-  ## setkey(result, e_uid)
-  ## result = result[sched[, list(e_uid, src, dest, rank, type)]]
-
-  writeSlice(x$edges[x$edges_inv], sliceTime = 'ILP')
+  if(any(x$schedule[, e_uid] < 0)){
+    result =
+      rbind(x$edges[x$schedule[e_uid > 0, list(e_uid)]],
+            x$schedule[e_uid < 0, names(x$edges), with=F])
+  } else
+    result = x$edges[x$schedule]
+  setkey(result, e_uid)
+  result = result[x$schedule[, list(e_uid, src, dest, rank, type)]]
+  writeSlice(result, sliceTime = 'ILP')
+  rm(result)
   confName
 }
 
