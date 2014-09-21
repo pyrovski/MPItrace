@@ -334,10 +334,19 @@ reduceConfs = function(x){
   x$schedule[is.na(weight), weight:=0]
 
   ## add slack vertices to vertices table
-  x$slackVertices =
-    x$schedule[is.na(s_uid),
-               list(start=head(start, 1),via=-head(src, 1)), by=src]
-  setnames(x$slackVertices, c('vertex', 'start', 'via'))
+  slackVerticesPre =
+    x$schedule[!is.na(s_uid) & is.na(d_uid), ## pre
+             list(start=head(start, 1),via=as.numeric(NA)),
+             by=dest]
+  slackVerticesPost =
+    x$schedule[is.na(s_uid) & !is.na(d_uid), ## post
+               list(start=head(start, 1),via=-head(src, 1)),
+               by=src]
+  setnames(slackVerticesPre, c('vertex', 'start', 'via'))
+  setnames(slackVerticesPost, c('vertex', 'start', 'via'))
+  x$slackVertices = rbind(slackVerticesPre, slackVerticesPost)
+  rm(slackVerticesPost, slackVerticesPre)
+  #!@todo fix?
   x$slackVertices$hash = as.character(NA)
   x$slackVertices$label= as.character(NA)
   setcolorder(x$slackVertices, names(x$vertices))

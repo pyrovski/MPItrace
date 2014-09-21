@@ -193,9 +193,15 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
 ## because they contribute to power consumption.
 
 timeslice = function(sched, vertices, edges, criticalPath,
-  ts_start=0, length=.01, n=Inf){
+  ts_start=0, length=.01, n=Inf)
+{
   setkey(vertices, vertex)
   setkey(sched, dest)
+###!@todo does this allow tasks to move at all? For non-slack edges,
+###!the start time of the following vertex is just the end time of the
+###!current edge. I think this has to be reworked to track only
+###!non-slack vertices for deadline purposes, while including slack
+###!edges in the resulting timeslices.
   sched = sched[vertices[, list(vertex, deadline=start)]]
   if(nrow(sched[start > deadline]) > 0){
     stop('invalid deadline!\n')
@@ -486,7 +492,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ##!@todo this is now the longest-running stage?
 ##!@todo add option for pre-task slack (in addition to post-task slack).
 ##! We can't schedule from the back until this is done.
-slackEdges = function(schedule, activeWaitConf, critPath){
+slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = T){
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power.
 
@@ -501,11 +507,27 @@ slackEdges = function(schedule, activeWaitConf, critPath){
   ## for LP purposes, 0 is equivalent to NA for power. Weight must be
   ## treated differently.
   if(length(nonCritEdgeIndices)){
-    origEdges = schedule[nonCritEdgeIndices]
-    slackEdges = data.table::copy(origEdges)
-    origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
-    slackEdges[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
-               list(-e_uid, -e_uid, NA, NA, start + weight)]
+    if(doubleSlack){
+      origEdges = schedule
+      slackEdgesPre = data.table::copy(origEdges)
+      slackEdgesPost = data.table::copy(origEdges)
+      origEdges[, c('src', 'dest', 's_uid', 'd_uid') :=
+                list(-e_uid-.5, -e_uid, NA, NA)]
+      #!@todo this will change if we schedule from the back; adjust start times
+      slackEdgesPre[, c('e_uid', 'dest', 'd_uid', 'weight') :=
+                    list(-e_uid-.5, -e_uid-.5, NA, NA)]
+      slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
+                     list(-e_uid, -e_uid, NA, NA, start + weight)]
+      slackEdges = rbind(slackEdgesPre, slackEdgesPost)
+      rm(slackEdgesPre, slackEdgesPost)
+    } else {
+      ## doubleSlack forces slack for all tasks
+      origEdges = schedule[nonCritEdgeIndices]
+      slackEdges = data.table::copy(origEdges)
+      origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
+      slackEdges[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
+                 list(-e_uid, -e_uid, NA, NA, start + weight)]
+    }
     ##slackEdges[, c(confCols, 'power', 'weight') := activeWaitConf]
     for(col in names(activeWaitConf)) slackEdges[[col]] = activeWaitConf[[col]]
     result = rbindlist(list(schedule[critEdgeIndices], origEdges, slackEdges))
