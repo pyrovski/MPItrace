@@ -322,6 +322,20 @@ reduceConfs = function(x){
   x$vertices = schedule$vertices
   rm(schedule); gc()
 
+  #! relax schedule
+  #!@todo the join with vertices could be done for all edges at once
+  setkey(x$edges, e_uid)
+  x$schedule = x$schedule[,{
+    deadline=x$vertices[J(dest), start];
+    wslack=deadline-start;
+    e=x$edges[J(.BY[[1]])][weight <= wslack][which.max(weight)];
+    if(nrow(e)){
+      a=.SD[,setdiff(names(.SD),names(e)),with=F];
+      e=cbind(a,e);
+      e[, e_uid:=NULL]
+    }},
+    by=e_uid]
+  
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
