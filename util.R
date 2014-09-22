@@ -192,20 +192,17 @@ powerStats = function(edges, edges_inv, powerLimits, limitedOnly=F, name){
 ## never be bisected by a timeslice. They are important to include
 ## because they contribute to power consumption.
 
-timeslice = function(sched, vertices, edges, criticalPath,
+timeslice = function(sched, vertices, edges,
   ts_start=0, length=.01, n=Inf)
 {
   setkey(vertices, vertex)
+###! this only looks at the start time of the next edge because we
+###! force timeslices to match the original schedule
   setkey(sched, dest)
-###!@todo does this allow tasks to move at all? For non-slack edges,
-###!the start time of the following vertex is just the end time of the
-###!current edge. I think this has to be reworked to track only
-###!non-slack vertices for deadline purposes, while including slack
-###!edges in the resulting timeslices.
   sched = sched[vertices[, list(vertex, deadline=start)]]
-  if(nrow(sched[start > deadline]) > 0){
+  if(nrow(sched[start > deadline]) > 0)
     stop('invalid deadline!\n')
-  }
+  ##!@todo start time will change if we schedule from the back
   sched[, wslack:=deadline-start]
   maxDeadline = max(sched[,deadline])
   if(ts_start > maxDeadline)
@@ -276,8 +273,10 @@ timeslice = function(sched, vertices, edges, criticalPath,
     result[, c('weight') := list(NULL)]
     setkey(result, e_uid)
     if(any(result[, e_uid] < 0)){
+      ## get multiple configs for non-slack edges, one config for slack edges
       result =
-        rbind(edges[result[e_uid > 0]], sched[, names(edges), with=F][result[e_uid < 0]])
+        rbind(edges[result[e_uid > 0]],
+              sched[, names(edges), with=F][result[e_uid < 0]])
     } else
       result = edges[result]
     result[,c('weight', 'oWeight', 'frac') := list(frac*weight, weight, NULL)]
@@ -285,13 +284,11 @@ timeslice = function(sched, vertices, edges, criticalPath,
       stop('Negative-weight edge(s)\n')
     setkey(result, e_uid)
     result = result[sched[, list(e_uid, src, dest, rank, type)]]
-    ##result = result[sched[, list(e_uid, rank, type)]]
-    if(any(!ranks %in% unique(result[, rank]))){
+    if(any(!ranks %in% unique(result[, rank])))
       stop('every rank should have an edge in every timeslice\n')
-    }
     return(result)
   }
-
+  
   result = nnapply(sliceTimes, f, mc=T)
   result
 }
@@ -508,6 +505,7 @@ slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = T){
   ## treated differently.
   if(length(nonCritEdgeIndices)){
     if(doubleSlack){
+      ## doubleSlack forces slack for all tasks
       origEdges = schedule
       slackEdgesPre = data.table::copy(origEdges)
       slackEdgesPost = data.table::copy(origEdges)
@@ -518,19 +516,23 @@ slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = T){
                     list(-e_uid-.5, -e_uid-.5, NA, NA)]
       slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
                      list(-e_uid, -e_uid, NA, NA, start + weight)]
-      slackEdges = rbind(slackEdgesPre, slackEdgesPost)
+      for(col in names(activeWaitConf)){
+        slackEdgesPre[[col]] = activeWaitConf[[col]]
+        slackEdgesPost[[col]] = activeWaitConf[[col]]
+      }
+      result = rbindlist(list(slackEdgesPre, origEdges, slackEdgesPost))
       rm(slackEdgesPre, slackEdgesPost)
     } else {
-      ## doubleSlack forces slack for all tasks
+### !doubleSlack forces slack for non-critical edges in the initial schedule
       origEdges = schedule[nonCritEdgeIndices]
       slackEdges = data.table::copy(origEdges)
       origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
-      slackEdges[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
-                 list(-e_uid, -e_uid, NA, NA, start + weight)]
+      slackEdges[, c('e_uid', 'src', 'o_src', 'o_dest', 's_uid', 'weight',
+                     'start') :=
+                 list(-e_uid, -e_uid, -e_uid, dest, NA, NA, start + weight)]
+      for(col in names(activeWaitConf)) slackEdges[[col]] = activeWaitConf[[col]]
+      result = rbindlist(list(schedule[critEdgeIndices], origEdges, slackEdges))
     }
-    ##slackEdges[, c(confCols, 'power', 'weight') := activeWaitConf]
-    for(col in names(activeWaitConf)) slackEdges[[col]] = activeWaitConf[[col]]
-    result = rbindlist(list(schedule[critEdgeIndices], origEdges, slackEdges))
     return(result)
   } else
     return(schedule)
