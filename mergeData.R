@@ -467,9 +467,12 @@ writeSlices = function(x, sliceDir='csv'){
   writeSlice(result, sliceTime = 'ILP')
   setkey(x$edges_inv, e_uid)
   LPMaxName = paste(confName, 'LPMax', sep='_')
-  write.table(x$edges[, list(e_uid, weight)][,.SD[which.max(weight)],
-                                             by=e_uid][x$edges_inv[, list(e_uid,
-                                               src, dest)]],
+  write.table(x$edges[, list(e_uid,
+                             weight)][,list(minWeight=min(weight),
+                                            maxWeight=max(weight)),
+                                      by=e_uid][
+                                        x$edges_inv[, list(e_uid,
+                                                           src, dest)]],
               file=
               file.path(sliceDir, paste(LPMaxName, '.edges.csv', sep='')),
               row.names=F, quote=F, sep=',')
