@@ -325,16 +325,20 @@ reduceConfs = function(x){
   #! relax schedule
   #!@todo the join with vertices could be done for all edges at once
   setkey(x$edges, e_uid)
-  x$schedule = x$schedule[,{
-    deadline=x$vertices[J(dest), start];
-    wslack=deadline-start;
-    e=x$edges[J(.BY[[1]])][weight <= wslack][which.max(weight)];
-    if(nrow(e)){
+  f = function(a, b) a <= b + 1e-8
+  x$schedule = x$schedule[,
+    {
+      deadline=x$vertices[J(dest), start];
+      wslack=deadline-start;
+      e=x$edges[J(.BY[[1]])][f(weight, wslack)][which.max(weight)];
+      if(!nrow(e)){
+        stop('expected at least one row')
+      }
       a=.SD[,setdiff(names(.SD),names(e)),with=F];
       e=cbind(a,e);
       e[, e_uid:=NULL]
-    }},
-    by=e_uid]
+    },
+  by=e_uid]
   
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
@@ -415,7 +419,24 @@ writeSlices = function(x, sliceDir='csv'){
           left=head(left,1),
           right=head(right,1)),
               by=e_uid]
-    else
+    else { ## ILP
+      ##!@todo write precedence matrix
+      e2 = x$schedule[,list(e_uid, src)]
+      setkey(e2, src)
+      setkey(x$schedule, e_uid)
+      precedence =
+        rbindlist(lapply(x$schedule[, e_uid],
+                  function(e){
+                    d = x$schedule[J(e), dest]
+                    succ=e2[J(d), list(successor=e_uid)]
+                    succ$edge=e;succ
+                  }))
+      setcolorder(precedence, c('edge', 'successor'))
+      write.table(precedence,
+                  file=file.path(sliceDir,
+                    paste(sliceName, '.precedence.csv', sep='')),
+                  row.names=F, quote=F, sep=',')
+      
       tmpSlice =
         slice[,list(
           ##!@todo this is easier to get from x$schedule
@@ -427,6 +448,7 @@ writeSlices = function(x, sliceDir='csv'){
           minPower=min(power),
           maxPower=max(power)),
               by=e_uid]
+    }
     write.table(tmpSlice,
                 file=file.path(sliceDir, paste(sliceName, '.edges.csv', sep='')),
                 row.names=F, quote=F, sep=',')
