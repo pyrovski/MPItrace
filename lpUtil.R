@@ -45,7 +45,7 @@ readLP = function(filename){
   a
 }
 
-reconcileLP = function(resultFile, timesliceFile, mode='split'){
+reconcileLP = function(resultFile, timesliceFile, powerLimit, mode='split'){
   result = readLP(resultFile)
   vertexStartTimes = result$Solution[[2]]$Variable$vertexStartTime
   result$Solution[[2]]$Variable$vertexStartTime = NULL
@@ -63,13 +63,6 @@ reconcileLP = function(resultFile, timesliceFile, mode='split'){
   ##!mean we need to assign them start times.
   vertices[is.na(start), start := 0.0]
   
-  unconstrained = vertices[start > .95]
-  if(nrow(unconstrained) > 0){
-      cat('unconstrained vertices:', resultFile, '!\n')
-      print(unconstrained)
-  }
-  rm(unconstrained)
-
   e_uids = unique(slice[, e_uid])
   
   taskDuration = result$Solution[[2]]$Variable$taskDuration
@@ -104,7 +97,7 @@ reconcileLP = function(resultFile, timesliceFile, mode='split'){
     ##edges = slice[task]
     result$edges = slice
     result$lp = task
-  } else {
+  } else { ## mode != 'keepAll'
     setkey(slice, e_uid, weight, power)
     setkey(task, e_uid, lpWeight, lpPower)
     
@@ -143,7 +136,12 @@ reconcileLP = function(resultFile, timesliceFile, mode='split'){
         m$dist = NULL
         m$frac=1
         return(m)
-      } else { 
+      } else if(mode == 'combinedLE'){
+        ## find a single config that is always under the power constraint
+        m = m[power <= powerLimit, .SD[which.min(weight)], by=e_uid]
+        m$frac=1
+        return(m)
+      } else if(mode == 'split'){  ## split configs
         fastFrac = (lp$lpPower - m[1, power])/diff(m[, power])
         slowFrac = 1 - fastFrac
         m$frac = c(fastFrac, slowFrac)
@@ -179,6 +177,7 @@ readCommandResults = function(command, ...){
   timesliceFiles = paste(prefixes, '.Rsave', sep='')
   times = sub(paste(command, '_', sep=''), '', prefixes)
   f = function(powerLimit){
+    powerLimit = as.numeric(powerLimit)
     cat(powerLimit, 'w', '\n')
     resultFiles =
       list.files(pattern=
@@ -186,7 +185,7 @@ readCommandResults = function(command, ...){
                        sep=''))
     times = sub('[.]p.*w[.]results$', '',
       sub(paste(command, '_', sep=''), '', resultFiles))
-    result = mcmapply(reconcileLP, resultFiles, timesliceFiles, ..., SIMPLIFY=F)
+    result = mcmapply(reconcileLP, resultFiles, timesliceFiles, powerLimit, ..., SIMPLIFY=F)
     names(result) = times
     result
   }
@@ -306,7 +305,9 @@ lpMerge = function(slices, name){
   setkey(vertices, vertex)
   setkey(edges, src)
   vertices = vertices[unique(edges[,list(src, start)])]
-  vertices[J('2'), start:=edges[dest=='2', max(start+weight)]]
+  vertices =
+    rbind(vertices, data.table(vertex='2',
+                               start=edges[dest=='2', max(start+weight)]))
 
   pt = powerTime(edges, vertices)
   plotPowerTime(pt, name=name)
@@ -333,6 +334,8 @@ if(!interactive()){
   resultsMerged = lpMergeAll(results)
   resultsOneConf = lpGo(mode='combined')
   resultsMergedOneConf = lpMergeAll(resultsOneConf)
+  resultsOneConfLE = lpGo(mode='combinedLE')
+  resultsMergedOneConfLE = lpMergeAll(resultsOneConf)
 }
 
 ## match one-config tasks and two-config tasks, including schedule
