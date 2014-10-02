@@ -322,6 +322,24 @@ reduceConfs = function(x){
   x$vertices = schedule$vertices
   rm(schedule); gc()
 
+  #! relax schedule
+  #!@todo the join with vertices could be done for all edges at once
+  setkey(x$edges, e_uid)
+  f = function(a, b) a <= b + 1e-8
+  x$schedule = x$schedule[,
+    {
+      deadline=x$vertices[J(dest), start];
+      wslack=deadline-start;
+      e=x$edges[J(.BY[[1]])][f(weight, wslack)][which.max(weight)];
+      if(!nrow(e)){
+        stop('expected at least one row')
+      }
+      a=.SD[,setdiff(names(.SD),names(e)),with=F];
+      e=cbind(a,e);
+      e[, e_uid:=NULL]
+    },
+  by=e_uid]
+  
   ## Insert slack edges. These edges will have power, but not minimum
   ## time. To insert the new edges, we need new vertices and new edge
   ## uids. We use the negative of the original edge uid for each.
@@ -334,10 +352,25 @@ reduceConfs = function(x){
   x$schedule[is.na(weight), weight:=0]
 
   ## add slack vertices to vertices table
-  x$slackVertices =
-    x$schedule[is.na(s_uid),
-               list(start=head(start, 1),via=-head(src, 1)), by=src]
-  setnames(x$slackVertices, c('vertex', 'start', 'via'))
+  slackVerticesPost =
+    x$schedule[is.na(s_uid) & !is.na(d_uid), ## post
+               list(start=head(start, 1),via=-head(src, 1)),
+               by=src]
+  setnames(slackVerticesPost, c('vertex', 'start', 'via'))
+
+  if(attr(x$schedule, 'doubleSlack')){
+    slackVerticesPre =
+      x$schedule[!is.na(s_uid) & is.na(d_uid), ## pre
+                 list(start=head(start, 1),via=as.numeric(NA)),
+                 by=dest]
+    setnames(slackVerticesPre, c('vertex', 'start', 'via'))
+    x$slackVertices = rbind(slackVerticesPre, slackVerticesPost)
+    rm(slackVerticesPost, slackVerticesPre)
+  } else
+    x$slackVertices = slackVerticesPost
+  rm(slackVerticesPost)
+  
+  #!@todo fix?
   x$slackVertices$hash = as.character(NA)
   x$slackVertices$label= as.character(NA)
   setcolorder(x$slackVertices, names(x$vertices))
@@ -392,7 +425,24 @@ writeSlices = function(x, sliceDir='csv'){
           left=head(left,1),
           right=head(right,1)),
               by=e_uid]
-    else
+    else { ## ILP
+      ##!@todo write precedence matrix
+      e2 = x$schedule[,list(e_uid, src)]
+      setkey(e2, src)
+      setkey(x$schedule, e_uid)
+      precedence =
+        rbindlist(lapply(x$schedule[, e_uid],
+                  function(e){
+                    d = x$schedule[J(e), dest]
+                    succ=e2[J(d), list(successor=e_uid)]
+                    succ$edge=e;succ
+                  }))
+      setcolorder(precedence, c('edge', 'successor'))
+      write.table(precedence,
+                  file=file.path(sliceDir,
+                    paste(sliceName, '.precedence.csv', sep='')),
+                  row.names=F, quote=F, sep=',')
+      
       tmpSlice =
         slice[,list(
           ##!@todo this is easier to get from x$schedule
@@ -404,6 +454,7 @@ writeSlices = function(x, sliceDir='csv'){
           minPower=min(power),
           maxPower=max(power)),
               by=e_uid]
+    }
     write.table(tmpSlice,
                 file=file.path(sliceDir, paste(sliceName, '.edges.csv', sep='')),
                 row.names=F, quote=F, sep=',')
@@ -444,9 +495,12 @@ writeSlices = function(x, sliceDir='csv'){
   writeSlice(result, sliceTime = 'ILP')
   setkey(x$edges_inv, e_uid)
   LPMaxName = paste(confName, 'LPMax', sep='_')
-  write.table(x$edges[, list(e_uid, weight)][,.SD[which.max(weight)],
-                                             by=e_uid][x$edges_inv[, list(e_uid,
-                                               src, dest)]],
+  write.table(x$edges[, list(e_uid,
+                             weight)][,list(minWeight=min(weight),
+                                            maxWeight=max(weight)),
+                                      by=e_uid][
+                                        x$edges_inv[, list(e_uid,
+                                                           src, dest)]],
               file=
               file.path(sliceDir, paste(LPMaxName, '.edges.csv', sep='')),
               row.names=F, quote=F, sep=',')
