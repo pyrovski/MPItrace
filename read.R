@@ -785,7 +785,7 @@ messageDeps = function(x){
 }
 
 ### vertices and edges with attributes.
-tableToGraph = function(x, assignments, messages, saveGraph=T){
+tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
 
   #host = unique(sub('[[:digit:]]+', '', assignments$hostname))
 
@@ -868,8 +868,9 @@ tableToGraph = function(x, assignments, messages, saveGraph=T){
   g = graph.data.frame(edges, vertices=vertices)
   rm(edges)
   if(saveGraph){
-    write.graph(g, file='graph.dot', format='dot')
-    system('gzip graph.dot', wait=F)
+    graphFile = file.path(path, 'graph.dot')
+    write.graph(g, file=graphFile, format='dot')
+    system(paste('gzip ', graphFile, sep=''), wait=F)
   }
   cat('Graph object time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges,
@@ -990,7 +991,7 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   b2 = b2$runtimes
   rm(b)
   ##if(!saveResult)
-  g = tableToGraph(b2, assignments=assignments, messages=messages)
+  g = tableToGraph(b2, assignments=assignments, messages=messages, path=path)
   ##else
   ##  g = NA
   cat('tableToGraph time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
