@@ -489,7 +489,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 ##!@todo this is now the longest-running stage?
 ##!@todo add option for pre-task slack (in addition to post-task slack).
 ##! We can't schedule from the back until this is done.
-slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = T){
+slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = F){
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power.
 
@@ -524,18 +524,22 @@ slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = T){
       rm(slackEdgesPre, slackEdgesPost)
     } else {
 ### !doubleSlack forces slack for non-critical edges in the initial schedule
-      origEdges = schedule[nonCritEdgeIndices]
-      slackEdges = data.table::copy(origEdges)
+      origEdges = schedule
+      slackEdgesPost = data.table::copy(origEdges)
       origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
-      slackEdges[, c('e_uid', 'src', 'o_src', 'o_dest', 's_uid', 'weight',
+      slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight',
                      'start') :=
-                 list(-e_uid, -e_uid, -e_uid, dest, NA, NA, start + weight)]
-      for(col in names(activeWaitConf)) slackEdges[[col]] = activeWaitConf[[col]]
-      result = rbindlist(list(schedule[critEdgeIndices], origEdges, slackEdges))
+                     list(-e_uid, -e_uid, NA, NA, start + weight)]
+      for(col in names(activeWaitConf))
+        slackEdgesPost[[col]] = activeWaitConf[[col]]
+      result =
+        rbindlist(list(origEdges, slackEdgesPost))
     }
-    return(result)
   } else
-    return(schedule)
+    result = schedule
+
+  attr(result, 'doubleSlack') <- doubleSlack
+  return(result)
 }
 
 ##!@todo there has to be a better way to do this. It could be
