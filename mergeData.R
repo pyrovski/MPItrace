@@ -391,6 +391,21 @@ writeSlices = function(x, sliceDir='csv'){
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
   schedVertices = rbind(x$vertices, x$slackVertices)
   setkey(schedVertices, vertex)
+  ## ancestors, descendants
+  g = graph.data.frame(x$schedule[, list(src, dest)])
+  graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
+  write.graph(g, file=graphFile, format='dot')
+  system(paste('gzip ', graphFile, sep=''), wait=F)
+
+### Ancestors of each vertex
+  ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+    
+### Descendants of each vertex
+  descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
+  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+  rm(ancestors, descendants, g)
+  
   writeSlice = function(slice, sliceTime){
     setkey(slice, e_uid)
     sliceName = paste(confName, sliceTime, sep='_')
