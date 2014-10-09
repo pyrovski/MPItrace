@@ -373,6 +373,8 @@ reduceConfs = function(x){
   #!@todo fix?
   x$slackVertices$hash = as.character(NA)
   x$slackVertices$label= as.character(NA)
+  ## x$slackVertices$ancestors = as.numeric(NA)
+  ## x$slackVertices$descendants = as.numeric(NA)
   setcolorder(x$slackVertices, names(x$vertices))
   cat(x$key, 'Slack time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(x)
@@ -386,11 +388,23 @@ writeSlices = function(x, sliceDir='csv'){
   files = Sys.glob(paste(file.path(sliceDir,confName), '*', sep=''))
   mclapply(files, unlink)
   
-###!@todo this would use less memory if we computed one slice at a time
-  slices = timeslice(x$schedule, rbind(x$vertices, x$slackVertices), x$edges)
-  names(slices) = sprintf('%.3f', as.numeric(names(slices)))
   schedVertices = rbind(x$vertices, x$slackVertices)
+###!@todo this would use less memory if we computed one slice at a time
+  slices = timeslice(x$schedule, schedVertices, x$edges)
+  names(slices) = sprintf('%.3f', as.numeric(names(slices)))
+
   setkey(schedVertices, vertex)
+  ## ancestors, descendants
+  g = graph.data.frame(x$schedule[, list(src, dest)])
+### Ancestors of each vertex
+  ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+    
+### Descendants of each vertex
+  descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
+  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+  rm(ancestors, descendants, g)
+  
   writeSlice = function(slice, sliceTime){
     setkey(slice, e_uid)
     sliceName = paste(confName, sliceTime, sep='_')
@@ -407,11 +421,12 @@ writeSlices = function(x, sliceDir='csv'){
                 file=file.path(sliceDir, paste(sliceName,'confSpace.csv',sep='.')),
                 quote=F, sep=',', row.names=F)
 
-    write.table(slice[,list(vertex=union(src,dest))],
-                file=file.path(sliceDir, paste(sliceName, '.vertices.csv', sep='')),
-                row.names=F, quote=F, sep=',')
-
-    if(sliceTime != 'ILP')
+    if(sliceTime != 'ILP'){
+      write.table(slice[,list(vertex=union(src,dest))],
+                  file=file.path(sliceDir,
+                    paste(sliceName, '.vertices.csv', sep='')),
+                  row.names=F, quote=F, sep=',')
+   
       tmpSlice =
         slice[,list(
           ##!@todo this is easier to get from x$schedule
@@ -425,8 +440,14 @@ writeSlices = function(x, sliceDir='csv'){
           left=head(left,1),
           right=head(right,1)),
               by=e_uid]
-    else { ## ILP
-      ##!@todo write precedence matrix
+    } else { ## ILP
+### expectedFiles = 
+### ['confSpace', 'vertices', 'edges', 'edge_weights', 'rank', 'precedence']
+      write.table(schedVertices[, list(vertex, ancestors, descendants)],
+                  file=file.path(sliceDir,
+                    paste(sliceName, '.vertices.csv', sep='')),
+                  row.names=F, quote=F, sep=',')
+      ## write precedence matrix
       e2 = x$schedule[,list(e_uid, src)]
       setkey(e2, src)
       setkey(x$schedule, e_uid)

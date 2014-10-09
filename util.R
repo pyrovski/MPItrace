@@ -327,9 +327,22 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     gd$vertices$name = as.numeric(gd$vertices$name)
   cat('Topological ordering\n')
   ts_order = topological.sort(g)
+
+  ## cat('Vertex ancestry (for ILP taskEvent fixing)\n')
+### Ancestors of each vertex
+  ## ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+  ## ancestors = ancestors[order(gd$vertices$name)]
+    
+### Descendants of each vertex
+  ## descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+  ## descendants = descendants[order(gd$vertices$name)]
+
   rm(g)
   
   setkey(vertices, vertex)
+  ## vertices$ancestors = ancestors
+  ## vertices$descendants = descendants
+  ## rm(ancestors, descendants)
   vertices_TO = data.table::copy(vertices[J(gd$vertices[ts_order]), list(vertex)])
   rm(gd); gc()
 
@@ -468,6 +481,9 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
 
 ###!igraph doesn't support finding the shortest path with negative
 ###!edge weights.
+
+### Does it support finding the number of edges in the shortest path?
+### Yes.
 
     setkey(edges, e_uid)
     setkey(vertices, vertex)
