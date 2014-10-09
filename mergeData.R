@@ -396,6 +396,10 @@ writeSlices = function(x, sliceDir='csv'){
   setkey(schedVertices, vertex)
   ## ancestors, descendants
   g = graph.data.frame(x$schedule[, list(src, dest)])
+  graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
+  write.graph(g, file=graphFile, format='dot')
+  system(paste('gzip ', graphFile, sep=''), wait=F)
+
 ### Ancestors of each vertex
   ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
     
