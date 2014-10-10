@@ -559,17 +559,31 @@ writeSlices = function(x, sliceDir='csv'){
     endVertex = '2'
     schedule = data.table::copy(x$schedule)
     for(v in cuts){
-      g2 = delete.vertices(g, v)
-      v = as.character(v)
-      frontVertices = as.numeric(V(g2)$name[subcomponent(g2, startVertex)])
-      backVertices = as.numeric(V(g2)$name[subcomponent(g2, endVertex)])
+      ## cut graph at v (remove outgoing edges)
+      g2 = delete.edges(g, incident(g, as.character(v), mode='out'))
+      frontVertices = V(g2)$name[subcomponent(g2, startVertex)]
+      backVertices = V(g2)$name[subcomponent(g2, endVertex)]
+      rm(g2)
 
+      ## retain only front component
+      g = induced.subgraph(g, frontVertices)
+
+      ## rename new sink vertex in g to '2'
+      V(g)[as.character(v)]$name = '2'
+      
+      frontVertices = as.numeric(frontVertices)
+      frontVertices = setdiff(frontVertices, v)
+      backVertices = as.numeric(backVertices)
+
+      ## filter tables
       backResult =
         rbind(result[src==v], result[union(src,dest) %in% backVertices])
-      result = rbind(result[dest==v], result[union(src,dest) %in% frontVertices])
-
-      backSchedule = rbind(schedule[src==v], schedule[union(src,dest) %in% backVertices])
-      schedule = rbind(schedule[dest==v], schedule[union(src,dest) %in% frontVertices])
+      result =
+        rbind(result[dest==v], result[union(src,dest) %in% frontVertices])
+      backSchedule =
+        rbind(schedule[src==v], schedule[union(src,dest) %in% backVertices])
+      schedule =
+        rbind(schedule[dest==v], schedule[union(src,dest) %in% frontVertices])
       
       ## adjust start times
       backSchedule$start = backSchedule$start - min(backSchedule$start)
@@ -582,7 +596,6 @@ writeSlices = function(x, sliceDir='csv'){
       
       writeSlice(backResult, paste('ILP.cut_', v, sep=''), backSchedule)
     }
-    rm(g2)
     ## write earliest chunk
     writeSlice(result, 'ILP.cut_front', schedule)
     rm(g)
