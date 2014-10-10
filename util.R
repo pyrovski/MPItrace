@@ -322,6 +322,13 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   g = graph.data.frame(edges[,c('src','dest'), with=F])
   if(no.clusters(g) > 1)
     stop('Graph has more than one cluster!', immediate. = T)
+
+  ## this assumes we're going to start edges as soon as their
+  ## dependencies are met
+  d = degree(g, mode='in') > 1
+  needSlack = as.numeric(names(d[which(d)]))
+  rm(d)
+  
   gd = lapply(get.data.frame(g, what='both'), as.data.table)
   if(numericVertices)
     gd$vertices$name = as.numeric(gd$vertices$name)
@@ -499,13 +506,16 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
     critPath=NULL
 
   return(list(edges=edges, vertices=vertices,
-              critPath=unname(unlist(critPath))))
+              critPath=unname(unlist(critPath)),
+              needSlack=needSlack))
 }
 
 ##!@todo this is now the longest-running stage?
 ##!@todo add option for pre-task slack (in addition to post-task slack).
 ##! We can't schedule from the back until this is done.
-slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = F){
+slackEdges = function(schedule, activeWaitConf, critPath, needSlack,
+  doubleSlack = F)
+{
 ###!For now, we use the minimum power recorded in any run as active
 ###!wait power.
 
@@ -519,40 +529,40 @@ slackEdges = function(schedule, activeWaitConf, critPath, doubleSlack = F){
 
   ## for LP purposes, 0 is equivalent to NA for power. Weight must be
   ## treated differently.
-  if(length(nonCritEdgeIndices)){
-    if(doubleSlack){
-      ## doubleSlack forces slack for all tasks
-      origEdges = schedule
-      slackEdgesPre = data.table::copy(origEdges)
-      slackEdgesPost = data.table::copy(origEdges)
-      origEdges[, c('src', 'dest', 's_uid', 'd_uid') :=
-                list(-e_uid-.5, -e_uid, NA, NA)]
-      #!@todo this will change if we schedule from the back; adjust start times
-      slackEdgesPre[, c('e_uid', 'dest', 'd_uid', 'weight') :=
-                    list(-e_uid-.5, -e_uid-.5, NA, NA)]
-      slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
-                     list(-e_uid, -e_uid, NA, NA, start + weight)]
-      for(col in names(activeWaitConf)){
-        slackEdgesPre[[col]] = activeWaitConf[[col]]
-        slackEdgesPost[[col]] = activeWaitConf[[col]]
-      }
-      result = rbindlist(list(slackEdgesPre, origEdges, slackEdgesPost))
-      rm(slackEdgesPre, slackEdgesPost)
-    } else {
-### !doubleSlack forces slack for non-critical edges in the initial schedule
-      origEdges = schedule
-      slackEdgesPost = data.table::copy(origEdges)
-      origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
-      slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight',
-                     'start') :=
-                     list(-e_uid, -e_uid, NA, NA, start + weight)]
-      for(col in names(activeWaitConf))
-        slackEdgesPost[[col]] = activeWaitConf[[col]]
-      result =
-        rbindlist(list(origEdges, slackEdgesPost))
-    }
-  } else
+  if(!length(nonCritEdgeIndices) || (!doubleSlack && length(needSlack) == 0)){
     result = schedule
+  } else if(doubleSlack){
+    ## doubleSlack forces slack for all tasks
+    origEdges = schedule
+    slackEdgesPre = data.table::copy(origEdges)
+    slackEdgesPost = data.table::copy(origEdges)
+    origEdges[, c('src', 'dest', 's_uid', 'd_uid') :=
+              list(-e_uid-.5, -e_uid, NA, NA)]
+    ##!@todo this will change if we schedule from the back; adjust start times
+    slackEdgesPre[, c('e_uid', 'dest', 'd_uid', 'weight') :=
+                  list(-e_uid-.5, -e_uid-.5, NA, NA)]
+    slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight', 'start') :=
+                   list(-e_uid, -e_uid, NA, NA, start + weight)]
+    for(col in names(activeWaitConf)){
+      slackEdgesPre[[col]] = activeWaitConf[[col]]
+      slackEdgesPost[[col]] = activeWaitConf[[col]]
+    }
+    result = rbindlist(list(slackEdgesPre, origEdges, slackEdgesPost))
+    rm(slackEdgesPre, slackEdgesPost)
+  } else { ## !doubleSlack && length(needSlack) > 0
+### !doubleSlack forces slack for non-critical edges in the initial schedule
+    origEdges = data.table::copy(schedule[dest %in% needSlack])
+    schedule = schedule[!dest %in% needSlack]
+    slackEdgesPost = data.table::copy(origEdges)
+    origEdges[, c('dest', 'd_uid') := list(-e_uid, NA)]
+    slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight',
+                       'start') :=
+                   list(-e_uid, -e_uid, NA, NA, start + weight)]
+    for(col in names(activeWaitConf))
+      slackEdgesPost[[col]] = activeWaitConf[[col]]
+    result =
+      rbindlist(list(schedule, origEdges, slackEdgesPost))
+  }
 
   attr(result, 'doubleSlack') <- doubleSlack
   return(result)
