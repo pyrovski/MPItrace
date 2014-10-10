@@ -393,23 +393,7 @@ writeSlices = function(x, sliceDir='csv'){
   slices = timeslice(x$schedule, schedVertices, x$edges)
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
 
-  setkey(schedVertices, vertex)
-  ## ancestors, descendants
-  g = graph.data.frame(x$schedule[, list(src, dest)])
-  graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
-  write.graph(g, file=graphFile, format='dot')
-  system(paste('gzip ', graphFile, sep=''), wait=F)
-
-### Ancestors of each vertex
-  ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
-    
-### Descendants of each vertex
-  descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
-  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
-  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
-  rm(ancestors, descendants, g)
-  
-  writeSlice = function(slice, sliceTime){
+  writeSlice = function(slice, sliceTime, schedule){
     setkey(slice, e_uid)
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
@@ -425,7 +409,7 @@ writeSlices = function(x, sliceDir='csv'){
                 file=file.path(sliceDir, paste(sliceName,'confSpace.csv',sep='.')),
                 quote=F, sep=',', row.names=F)
 
-    if(sliceTime != 'ILP'){
+    if(!length(grep('ILP', sliceTime))){
       write.table(slice[,list(vertex=union(src,dest))],
                   file=file.path(sliceDir,
                     paste(sliceName, '.vertices.csv', sep='')),
@@ -433,7 +417,7 @@ writeSlices = function(x, sliceDir='csv'){
    
       tmpSlice =
         slice[,list(
-          ##!@todo this is easier to get from x$schedule
+          ##!@todo this is easier to get from schedule
           src=head(src, 1), dest=head(dest, 1),
           edge_rank=head(rank,1),
           ## but not these
@@ -452,13 +436,13 @@ writeSlices = function(x, sliceDir='csv'){
                     paste(sliceName, '.vertices.csv', sep='')),
                   row.names=F, quote=F, sep=',')
       ## write precedence matrix
-      e2 = x$schedule[,list(e_uid, src)]
+      e2 = schedule[,list(e_uid, src)]
       setkey(e2, src)
-      setkey(x$schedule, e_uid)
+      setkey(schedule, e_uid)
       precedence =
-        rbindlist(lapply(x$schedule[, e_uid],
+        rbindlist(lapply(schedule[, e_uid],
                   function(e){
-                    d = x$schedule[J(e), dest]
+                    d = schedule[J(e), dest]
                     succ=e2[J(d), list(successor=e_uid)]
                     succ$edge=e;succ
                   }))
@@ -470,7 +454,7 @@ writeSlices = function(x, sliceDir='csv'){
       
       tmpSlice =
         slice[,list(
-          ##!@todo this is easier to get from x$schedule
+          ##!@todo this is easier to get from schedule
           src=head(src, 1), dest=head(dest, 1),
           edge_rank=head(rank,1),
           ## but not these
@@ -504,11 +488,11 @@ writeSlices = function(x, sliceDir='csv'){
     save(slice, file=file.path(sliceDir, paste(sliceName, '.Rsave', sep='')))
   }
   mclapply(names(slices), function(sliceTime)
-           writeSlice(slices[[sliceTime]], sliceTime))
+           writeSlice(slices[[sliceTime]], sliceTime, x$schedule))
   setkey(x$edges, e_uid)
   setkey(x$schedule, e_uid)
   
-  ##!@todo add slack edges to table passed to writeSlice for ILP
+  ## add slack edges to table passed to writeSlice for ILP
   if(any(x$schedule[, e_uid] < 0)){
     result =
       rbind(x$edges[x$schedule[e_uid > 0, list(e_uid)]],
@@ -517,23 +501,93 @@ writeSlices = function(x, sliceDir='csv'){
     result = x$edges[x$schedule]
   setkey(result, e_uid)
   result = result[x$schedule[, list(e_uid, src, dest, rank, type)]]
-  writeSlice(result, sliceTime = 'ILP')
-  setkey(x$edges_inv, e_uid)
-  LPMaxName = paste(confName, 'LPMax', sep='_')
-  write.table(x$edges[, list(e_uid,
-                             weight)][,list(minWeight=min(weight),
-                                            maxWeight=max(weight)),
-                                      by=e_uid][
-                                        x$edges_inv[, list(e_uid,
-                                                           src, dest)]],
-              file=
-              file.path(sliceDir, paste(LPMaxName, '.edges.csv', sep='')),
-              row.names=F, quote=F, sep=',')
-  write.table(x$vertices[, list(vertex)],
-              file=
-              file.path(sliceDir, paste(LPMaxName, '.vertices.csv', sep='')),
-              row.names=F, quote=F, sep=',')
-  rm(result)
+
+  setkey(schedVertices, vertex)
+  ## ancestors, descendants
+  g = graph.data.frame(x$schedule[, list(src, dest)])
+  graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
+  write.graph(g, file=graphFile, format='dot')
+  system(paste('gzip ', graphFile, sep=''), wait=F)
+
+### Ancestors of each vertex
+  ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+    
+### Descendants of each vertex
+  descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
+  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+  rm(ancestors, descendants)
+
+###!@todo write barrier-separated sections separately. This
+### corresponds to finding vertices through which all paths pass. We
+### should be able to find such vertices in O(|V|^2*|E|) time by
+### independently deleting each vertex and testing the number of
+### connected components. We can reduce the list of candidate vertices
+### by looking for vertices with outgoing edges to every rank, and
+### vertices matching MPI_Barrier, although these qualities are not
+### sufficient. The resulting complexity is O(|B|*|V|*|E|), where B is
+### the set of barrier/high degree edges.
+
+###!@todo don't forget to set the first vertex in each section to 1
+### and last vertex to 2!
+
+  x$numRanks = length(unique(x$edges_inv$rank))
+  cuts = list()
+  if(x$numRanks > 1){
+    candidates = degree(g, mode='in') >= x$numRanks &
+      degree(g, mode='out') >= x$numRanks
+    if(any(candidates)){
+      candidateVertices = names(which(candidates))
+      cuts = lapply(candidateVertices, function(v){
+        result = NULL
+        if(no.clusters(delete.vertices(g, v)) > 1)
+          v
+        else
+          NA
+      })
+      cuts = cuts[!is.na(cuts)]
+    }
+  }
+  if(length(cuts)){
+### perform the cuts: renumber first/last vertices, write separate file sets
+    
+### produce a list of data tables of length (number of cuts + 1)
+    setkey(schedVertices, vertex)
+    # get cuts in reverse order of vertex start time
+    cuts = schedVertices[J(as.numeric(cuts))][order(-start)]$vertex
+    startVertex = '1'
+    endVertex = '2'
+    schedule = data.table::copy(x$schedule)
+    for(v in cuts){
+      g2 = delete.vertices(g, v)
+      v = as.character(v)
+      frontVertices = as.numeric(V(g2)$name[subcomponent(g2, startVertex)])
+      backVertices = as.numeric(V(g2)$name[subcomponent(g2, endVertex)])
+
+      backResult =
+        rbind(result[src==v], result[union(src,dest) %in% backVertices])
+      result = rbind(result[dest==v], result[union(src,dest) %in% frontVertices])
+
+      backSchedule = rbind(schedule[src==v], schedule[union(src,dest) %in% backVertices])
+      schedule = rbind(schedule[dest==v], schedule[union(src,dest) %in% frontVertices])
+      
+      ## adjust start times
+      backSchedule$start = backSchedule$start - min(backSchedule$start)
+
+###renumber vertices in backSchedule, backResult, schedule, result
+      backSchedule[src==v, src := 1]
+      backResult[src==v, src := 1]
+      schedule[dest==v, dest := 2]
+      result[dest==v, dest := 2]
+      
+      writeSlice(backResult, paste('ILP.cut_', v, sep=''), backSchedule)
+    }
+    rm(g2)
+    ## write earliest chunk
+    writeSlice(result, 'ILP.cut_front', schedule)
+    rm(g)
+  } else
+    writeSlice(result, sliceTime = 'ILP', x$schedule)
   confName
 }
 
