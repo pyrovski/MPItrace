@@ -5,6 +5,8 @@ require('parallel')
 source('./util.R')
 source('~/local/bin/pbutils.R')
 
+ilpFileTypes = c('duration', 'edges', 'events')
+
 readLP = function(filename){
   a = fromJSON(file=filename)
 
@@ -205,7 +207,6 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
   cutPattern = 'cut_[0-9]+'
   plPattern = 'p.*w'
   pattern = paste(pattern, '.*[.]duration$', sep='')
-  print(pattern)
   files = list.files(pattern=pattern)
   ##duration'
   prefixes =
@@ -236,21 +237,26 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
                              plPattern, 'duration$', sep='[.]'),
                        '\\1', files)))))
     
-    fileTypes = c('duration', 'edges', 'events')
     nnapply(powerLimits, function(powerLimit)
             nnapply(cuts, function(cut)
-                    nnapply(fileTypes, function(fileType){
+                    nnapply(ilpFileTypes, function(fileType){
                       filename =
                         paste(prefix, paste('cut_', cut, sep=''),
                               paste('p', powerLimit, 'w', sep=''),
                               fileType, sep='.')
-                      tryCatch(read.table(filename, h=T, sep=','),
-                               error=function(e){
-                                 warning('failed to read ', filename, immediate.=T)
-                                 NULL
-                               }, finally=NULL)
-                    }),
-                    mc=T))})
+                      tryCatch(
+                        as.data.table(
+                          read.table(filename, h=T, sep=',')),
+                        error=function(e){
+                          warning('failed to read ', filename, immediate.=T)
+                          NULL
+                        }, finally=NULL)
+                    }
+                            ),
+                    mc=T)
+            )
+  }
+          )
 }
 
 ## intended to process results of lpGo(mode='keepAll'), simulating some
@@ -392,9 +398,33 @@ loadAndMergeLP = function(){
   resultsMergedOneConfLE <<- lpMergeAll(resultsOneConfLE)
 }
 
-loadAndMergeILP = function(){
-  resultsILP <<- ilpGo()
+loadAndMergeILP = function(...){
+  resultsILP <<- ilpGo(...)
   
+  ## merge cuts
+  resultsILPMerged <<-
+    lapply(
+      resultsILP,
+      function(powerLimits)
+      lapply(powerLimits,
+             function(cuts) 
+             nnapply(ilpFileTypes,
+                     function(fileType)
+                     rbindlist(napply(cuts,
+                                      function(x, name){
+                                        result=x[[fileType]]
+                                        if(is.null(result))
+                                          return(result)
+                                        result[, cut:=name]
+                                        result
+                                      }
+                                      )
+                               )
+                     )
+             )
+      )
+
+  ##!@todo propagate event times across cuts
 }
 
 if(!interactive()){
