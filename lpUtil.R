@@ -233,13 +233,12 @@ ilpGo = function(...){
     fileTypes = c('duration', 'edges', 'events')
     nnapply(powerLimits, function(powerLimit)
             nnapply(cuts, function(cut)
-                    lapply(fileTypes, function(fileType)
-                           read.table(paste(prefix, paste('cut_', cut, sep=''),
-                                            paste('p', powerLimit, 'w', sep=''),
-                                            fileType, sep='.'), h=T))
-                    )
-            )
-  })
+                    nnapply(fileTypes, function(fileType)
+                            read.table(
+                              paste(prefix, paste('cut_', cut, sep=''),
+                                    paste('p', powerLimit, 'w', sep=''),
+                                    fileType, sep='.'), h=T, sep=',')),
+                    mc=T))})
 }
 
 ## intended to process results of lpGo(mode='keepAll'), simulating some
