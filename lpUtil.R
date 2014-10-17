@@ -199,12 +199,14 @@ lpGo = function(...){
   nnapply(commands, readCommandResults, ...)
 }
 
-ilpGo = function(...){
+ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
   ##!@todo get all files, then filter by prefix, then by power limit and cut
   load('../mergedEntries.Rsave', envir=.GlobalEnv)
   cutPattern = 'cut_[0-9]+'
   plPattern = 'p.*w'
-  files = list.files(pattern='.*[.]duration$')
+  pattern = paste(pattern, '.*[.]duration$', sep='')
+  print(pattern)
+  files = list.files(pattern=pattern)
   ##duration'
   prefixes =
     unique(sub(paste('(.*)', cutPattern, plPattern, 'duration', sep='[.]'),
@@ -219,25 +221,35 @@ ilpGo = function(...){
     files = list.files(pattern=paste(prefix, cutPattern, plPattern,
                          'duration$', sep='[.]'))
     powerLimits =
-      sub('p([0-9]+)w', '\\1',
-          unique(sub(paste('.*', cutPattern, paste('(', plPattern, ')', sep=''),
-                           'duration$', sep='[.]'),
-                     '\\1', files)))
+      as.numeric(
+        sub('p([0-9]+)w', '\\1',
+            unique(sub(paste('.*', cutPattern, paste('(', plPattern, ')', sep=''),
+                             'duration$', sep='[.]'),
+                       '\\1', files))))
+    if(length(powerLimitInt))
+      powerLimits = intersect(powerLimits, powerLimitInt)
+    
     cuts =
-      sub('cut_([0-9]+)', '\\1',
-          unique(sub(paste(prefix, paste('(',cutPattern, ')', sep=''),
-                           plPattern, 'duration$', sep='[.]'),
-                     '\\1', files)))
-
+      sort(as.numeric(
+        sub('cut_([0-9]+)', '\\1',
+            unique(sub(paste(prefix, paste('(',cutPattern, ')', sep=''),
+                             plPattern, 'duration$', sep='[.]'),
+                       '\\1', files)))))
     
     fileTypes = c('duration', 'edges', 'events')
     nnapply(powerLimits, function(powerLimit)
             nnapply(cuts, function(cut)
-                    nnapply(fileTypes, function(fileType)
-                            read.table(
-                              paste(prefix, paste('cut_', cut, sep=''),
-                                    paste('p', powerLimit, 'w', sep=''),
-                                    fileType, sep='.'), h=T, sep=',')),
+                    nnapply(fileTypes, function(fileType){
+                      filename =
+                        paste(prefix, paste('cut_', cut, sep=''),
+                              paste('p', powerLimit, 'w', sep=''),
+                              fileType, sep='.')
+                      tryCatch(read.table(filename, h=T, sep=','),
+                               error=function(e){
+                                 warning('failed to read ', filename, immediate.=T)
+                                 NULL
+                               }, finally=NULL)
+                    }),
                     mc=T))})
 }
 
@@ -380,8 +392,14 @@ loadAndMergeLP = function(){
   resultsMergedOneConfLE <<- lpMergeAll(resultsOneConfLE)
 }
 
+loadAndMergeILP = function(){
+  resultsILP <<- ilpGo()
+  
+}
+
 if(!interactive()){
   loadAndMergeLP()
+  loadAndMergeILP()
 }
 
 ## match one-config tasks and two-config tasks, including schedule
