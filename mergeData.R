@@ -61,7 +61,11 @@ mergeConfs = function(conf, entries){
   if(length(unique(sapply(result, function(r) nrow(r$compEdges)))) > 1){
     errMsg = 'Runs differ in number of edges!'
     cat(errMsg, '\n')
-    stop(errMsg)
+    edgeTable = sort(table(sapply(result, function(r) nrow(r$compEdges))))
+    maxEdgeCount = names(edgeTable[1])
+    keep = sapply(result, function(r) nrow(r$compEdges) == maxEdgeCount)
+    warning('removing ', length(which(!keep)), ' experiments', immediate.=T)
+    result = result[keep]
   }
 
   f = function(r, name){
@@ -319,6 +323,7 @@ reduceConfs = function(x){
   x$schedule = schedule$edges
   x$critPath = schedule$critPath
   x$vertices = schedule$vertices
+  x$minTime = x$vertices[vertex==2,start]
   needSlack = schedule$needSlack
   rm(schedule); gc()
 
@@ -625,7 +630,7 @@ writeSlices = function(x, sliceDir='csv'){
     rm(ancestors, descendants)
     rm(g)
     
-    writeSlice(result, 'ILP.cut_front', schedule, schedVertices)
+    writeSlice(result, 'ILP.cut_0', schedule, schedVertices)
   } else
     writeSlice(result, sliceTime = 'ILP', x$schedule, schedVertices)
   confName
