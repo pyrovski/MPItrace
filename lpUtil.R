@@ -371,13 +371,17 @@ lpMergeAll = function(commands_powers){
          })
 }
 
+loadAndMergeLP = function(){
+  results <<- lpGo()
+  resultsMerged <<- lpMergeAll(results)
+  resultsOneConf <<- lpGo(mode='combined')
+  resultsMergedOneConf <<- lpMergeAll(resultsOneConf)
+  resultsOneConfLE <<- lpGo(mode='combinedLE')
+  resultsMergedOneConfLE <<- lpMergeAll(resultsOneConfLE)
+}
+
 if(!interactive()){
-  results = lpGo()
-  resultsMerged = lpMergeAll(results)
-  resultsOneConf = lpGo(mode='combined')
-  resultsMergedOneConf = lpMergeAll(resultsOneConf)
-  resultsOneConfLE = lpGo(mode='combinedLE')
-  resultsMergedOneConfLE = lpMergeAll(resultsOneConfLE)
+  loadAndMergeLP()
 }
 
 ## match one-config tasks and two-config tasks, including schedule
