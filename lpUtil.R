@@ -199,6 +199,48 @@ lpGo = function(...){
   nnapply(commands, readCommandResults, ...)
 }
 
+ilpGo = function(...){
+  ##!@todo get all files, then filter by prefix, then by power limit and cut
+  load('../mergedEntries.Rsave', envir=.GlobalEnv)
+  cutPattern = 'cut_[0-9]+'
+  plPattern = 'p.*w'
+  files = list.files(pattern='.*[.]duration$')
+  ##duration'
+  prefixes =
+    unique(sub(paste('(.*)', cutPattern, plPattern, 'duration', sep='[.]'),
+               '\\1', files))
+
+  if(!length(prefixes)){
+    warning('no ILP result files!', immediate.=T)
+    return(NULL)
+  }
+  
+  nnapply(prefixes, function(prefix){
+    files = list.files(pattern=paste(prefix, cutPattern, plPattern,
+                         'duration$', sep='[.]'))
+    powerLimits =
+      sub('p([0-9]+)w', '\\1',
+          unique(sub(paste('.*', cutPattern, paste('(', plPattern, ')', sep=''),
+                           'duration$', sep='[.]'),
+                     '\\1', files)))
+    cuts =
+      sub('cut_([0-9]+)', '\\1',
+          unique(sub(paste(prefix, paste('(',cutPattern, ')', sep=''),
+                           plPattern, 'duration$', sep='[.]'),
+                     '\\1', files)))
+
+    
+    fileTypes = c('duration', 'edges', 'events')
+    nnapply(powerLimits, function(powerLimit)
+            nnapply(cuts, function(cut)
+                    nnapply(fileTypes, function(fileType)
+                            read.table(
+                              paste(prefix, paste('cut_', cut, sep=''),
+                                    paste('p', powerLimit, 'w', sep=''),
+                                    fileType, sep='.'), h=T, sep=',')),
+                    mc=T))})
+}
+
 ## intended to process results of lpGo(mode='keepAll'), simulating some
 ## runtime power balancing algorithms. This differs from powerStats()
 ## because of the following:
@@ -335,7 +377,7 @@ if(!interactive()){
   resultsOneConf = lpGo(mode='combined')
   resultsMergedOneConf = lpMergeAll(resultsOneConf)
   resultsOneConfLE = lpGo(mode='combinedLE')
-  resultsMergedOneConfLE = lpMergeAll(resultsOneConf)
+  resultsMergedOneConfLE = lpMergeAll(resultsOneConfLE)
 }
 
 ## match one-config tasks and two-config tasks, including schedule

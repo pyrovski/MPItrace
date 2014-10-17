@@ -43,3 +43,5 @@ localConfig
 \#*
 *.gch
 errlog*
+rapl_clamp*
+*.log

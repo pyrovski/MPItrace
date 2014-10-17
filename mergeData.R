@@ -61,7 +61,11 @@ mergeConfs = function(conf, entries){
   if(length(unique(sapply(result, function(r) nrow(r$compEdges)))) > 1){
     errMsg = 'Runs differ in number of edges!'
     cat(errMsg, '\n')
-    stop(errMsg)
+    edgeTable = sort(table(sapply(result, function(r) nrow(r$compEdges))))
+    maxEdgeCount = names(edgeTable[1])
+    keep = sapply(result, function(r) nrow(r$compEdges) == maxEdgeCount)
+    warning('removing ', length(which(!keep)), ' experiments', immediate.=T)
+    result = result[keep]
   }
 
   f = function(r, name){
@@ -316,10 +320,11 @@ reduceConfs = function(x){
   
   cat('Schedule and critical path\n')
   schedule = getSchedule(x$schedule, x$vertices)
-  ##g = schedule$g
   x$schedule = schedule$edges
   x$critPath = schedule$critPath
   x$vertices = schedule$vertices
+  x$minTime = x$vertices[vertex==2,start]
+  needSlack = schedule$needSlack
   rm(schedule); gc()
 
   #! relax schedule
@@ -348,7 +353,7 @@ reduceConfs = function(x){
   x$schedule = x$schedule[x$edges_inv[, list(e_uid, s_uid, d_uid)]]
   activeWaitConf = x$edges[power > 0][which.min(power), c(confCols, 'power'), with=F]
   activeWaitConf$weight = as.numeric(NA)
-  x$schedule = slackEdges(x$schedule, activeWaitConf, x$critPath)
+  x$schedule = slackEdges(x$schedule, activeWaitConf, x$critPath, needSlack)
   x$schedule[is.na(weight), weight:=0]
 
   ## add slack vertices to vertices table
@@ -373,6 +378,8 @@ reduceConfs = function(x){
   #!@todo fix?
   x$slackVertices$hash = as.character(NA)
   x$slackVertices$label= as.character(NA)
+  ## x$slackVertices$ancestors = as.numeric(NA)
+  ## x$slackVertices$descendants = as.numeric(NA)
   setcolorder(x$slackVertices, names(x$vertices))
   cat(x$key, 'Slack time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(x)
@@ -386,27 +393,12 @@ writeSlices = function(x, sliceDir='csv'){
   files = Sys.glob(paste(file.path(sliceDir,confName), '*', sep=''))
   mclapply(files, unlink)
   
-###!@todo this would use less memory if we computed one slice at a time
-  slices = timeslice(x$schedule, rbind(x$vertices, x$slackVertices), x$edges)
-  names(slices) = sprintf('%.3f', as.numeric(names(slices)))
   schedVertices = rbind(x$vertices, x$slackVertices)
-  setkey(schedVertices, vertex)
-  ## ancestors, descendants
-  g = graph.data.frame(x$schedule[, list(src, dest)])
-  graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
-  write.graph(g, file=graphFile, format='dot')
-  system(paste('gzip ', graphFile, sep=''), wait=F)
+###!@todo this would use less memory if we computed one slice at a time
+  slices = timeslice(x$schedule, schedVertices, x$edges)
+  names(slices) = sprintf('%.3f', as.numeric(names(slices)))
 
-### Ancestors of each vertex
-  ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
-    
-### Descendants of each vertex
-  descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
-  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
-  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
-  rm(ancestors, descendants, g)
-  
-  writeSlice = function(slice, sliceTime){
+  writeSlice = function(slice, sliceTime, schedule, schedVertices){
     setkey(slice, e_uid)
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
@@ -422,14 +414,15 @@ writeSlices = function(x, sliceDir='csv'){
                 file=file.path(sliceDir, paste(sliceName,'confSpace.csv',sep='.')),
                 quote=F, sep=',', row.names=F)
 
-    write.table(slice[,list(vertex=union(src,dest))],
-                file=file.path(sliceDir, paste(sliceName, '.vertices.csv', sep='')),
-                row.names=F, quote=F, sep=',')
-
-    if(sliceTime != 'ILP')
+    if(!length(grep('ILP', sliceTime))){
+      write.table(slice[,list(vertex=union(src,dest))],
+                  file=file.path(sliceDir,
+                    paste(sliceName, '.vertices.csv', sep='')),
+                  row.names=F, quote=F, sep=',')
+   
       tmpSlice =
         slice[,list(
-          ##!@todo this is easier to get from x$schedule
+          ##!@todo this is easier to get from schedule
           src=head(src, 1), dest=head(dest, 1),
           edge_rank=head(rank,1),
           ## but not these
@@ -440,15 +433,21 @@ writeSlices = function(x, sliceDir='csv'){
           left=head(left,1),
           right=head(right,1)),
               by=e_uid]
-    else { ## ILP
-      ##!@todo write precedence matrix
-      e2 = x$schedule[,list(e_uid, src)]
+    } else { ## ILP
+### expectedFiles = 
+### ['confSpace', 'vertices', 'edges', 'edge_weights', 'rank', 'precedence']
+      write.table(schedVertices[, list(vertex, ancestors, descendants)],
+                  file=file.path(sliceDir,
+                    paste(sliceName, '.vertices.csv', sep='')),
+                  row.names=F, quote=F, sep=',')
+      ## write precedence matrix
+      e2 = schedule[,list(e_uid, src)]
       setkey(e2, src)
-      setkey(x$schedule, e_uid)
+      setkey(schedule, e_uid)
       precedence =
-        rbindlist(lapply(x$schedule[, e_uid],
+        rbindlist(lapply(schedule[, e_uid],
                   function(e){
-                    d = x$schedule[J(e), dest]
+                    d = schedule[J(e), dest]
                     succ=e2[J(d), list(successor=e_uid)]
                     succ$edge=e;succ
                   }))
@@ -460,7 +459,7 @@ writeSlices = function(x, sliceDir='csv'){
       
       tmpSlice =
         slice[,list(
-          ##!@todo this is easier to get from x$schedule
+          ##!@todo this is easier to get from schedule
           src=head(src, 1), dest=head(dest, 1),
           edge_rank=head(rank,1),
           ## but not these
@@ -494,11 +493,11 @@ writeSlices = function(x, sliceDir='csv'){
     save(slice, file=file.path(sliceDir, paste(sliceName, '.Rsave', sep='')))
   }
   mclapply(names(slices), function(sliceTime)
-           writeSlice(slices[[sliceTime]], sliceTime))
+           writeSlice(slices[[sliceTime]], sliceTime, x$schedule))
   setkey(x$edges, e_uid)
   setkey(x$schedule, e_uid)
   
-  ##!@todo add slack edges to table passed to writeSlice for ILP
+  ## add slack edges to table passed to writeSlice for ILP
   if(any(x$schedule[, e_uid] < 0)){
     result =
       rbind(x$edges[x$schedule[e_uid > 0, list(e_uid)]],
@@ -507,23 +506,133 @@ writeSlices = function(x, sliceDir='csv'){
     result = x$edges[x$schedule]
   setkey(result, e_uid)
   result = result[x$schedule[, list(e_uid, src, dest, rank, type)]]
-  writeSlice(result, sliceTime = 'ILP')
-  setkey(x$edges_inv, e_uid)
-  LPMaxName = paste(confName, 'LPMax', sep='_')
-  write.table(x$edges[, list(e_uid,
-                             weight)][,list(minWeight=min(weight),
-                                            maxWeight=max(weight)),
-                                      by=e_uid][
-                                        x$edges_inv[, list(e_uid,
-                                                           src, dest)]],
-              file=
-              file.path(sliceDir, paste(LPMaxName, '.edges.csv', sep='')),
-              row.names=F, quote=F, sep=',')
-  write.table(x$vertices[, list(vertex)],
-              file=
-              file.path(sliceDir, paste(LPMaxName, '.vertices.csv', sep='')),
-              row.names=F, quote=F, sep=',')
-  rm(result)
+
+  setkey(schedVertices, vertex)
+  ## ancestors, descendants
+  g = graph.data.frame(x$schedule[, list(src, dest)])
+### Ancestors of each vertex
+  ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
+### Descendants of each vertex
+  descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+  graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
+  write.graph(g, file=graphFile, format='dot')
+  system(paste('gzip ', graphFile, sep=''), wait=F)
+
+###!@todo write barrier-separated sections separately. This
+### corresponds to finding vertices through which all paths pass. We
+### should be able to find such vertices in O(|V|^2*|E|) time by
+### independently deleting each vertex and testing the number of
+### connected components. We can reduce the list of candidate vertices
+### by looking for vertices with outgoing edges to every rank, and
+### vertices matching MPI_Barrier, although these qualities are not
+### sufficient. The resulting complexity is O(|B|*|V|*|E|), where B is
+### the set of barrier/high degree edges.
+
+###!@todo don't forget to set the first vertex in each section to 1
+### and last vertex to 2!
+
+  x$numRanks = length(unique(x$edges_inv$rank))
+  cuts = list()
+  if(x$numRanks > 1){
+    candidates = degree(g, mode='in') >= x$numRanks &
+      degree(g, mode='out') >= x$numRanks
+    if(any(candidates)){
+      candidates = names(which(candidates))
+      cuts = lapply(candidates, function(v){
+        result = NULL
+        if(no.clusters(delete.vertices(g, v)) > 1)
+          v
+        else
+          NA
+      })
+      cuts = cuts[!is.na(cuts)]
+    }
+  }
+  if(length(cuts)){
+### perform the cuts: renumber first/last vertices, write separate file sets
+    
+### produce a list of data tables of length (number of cuts + 1)
+    setkey(schedVertices, vertex)
+    # get cuts in reverse order of vertex start time
+    cuts = schedVertices[J(as.numeric(cuts))][order(-start)]$vertex
+    startVertex = '1'
+    endVertex = '2'
+    schedule = data.table::copy(x$schedule)
+    for(v in cuts){
+      ## cut graph at v (remove outgoing edges)
+      cutEdges = incident(g, as.character(v), mode='out')
+      outNeighbors = neighbors(g, as.character(v), mode='out')
+      g2 = delete.edges(g, cutEdges)
+      frontVertices = V(g2)$name[subcomponent(g2, startVertex)]
+      backVertices = V(g2)$name[subcomponent(g2, endVertex)]
+
+      ## retain only front component
+      g2 = induced.subgraph(g, c(v, backVertices))
+      ## g2 = g2 + vertex(as.character(v))
+      outNeighbors = V(g)$name[outNeighbors]
+      g2[from=as.character(rep(v, times=length(outNeighbors))),
+         to=outNeighbors] = T
+      g = induced.subgraph(g, frontVertices)
+      
+      ## rename new sink vertex in g to '2'
+      V(g)[as.character(v)]$name = '2'
+
+      frontVertices = as.numeric(frontVertices)
+      frontVertices = setdiff(frontVertices, v)
+      backVertices = as.numeric(backVertices)
+
+      ## rename new source vertex in g2 to '1'
+      ##V(g2)[as.character(v)]$name = '1'
+
+### Ancestors of each vertex
+      ancestors = neighborhood.size(g2, order=vcount(g2), mode='in') - 1
+### Descendants of each vertex
+      descendants = neighborhood.size(g2, order=vcount(g2), mode='out') - 1
+      backSchedVertices = schedVertices[J(c(v, backVertices))]
+      setkey(backSchedVertices, vertex)
+      backSchedVertices$ancestors = ancestors[order(as.numeric(V(g2)$name))]
+      backSchedVertices$descendants = descendants[order(as.numeric(V(g2)$name))]
+      rm(ancestors, descendants)
+      rm(g2)      
+      schedVertices = schedVertices[J(c(frontVertices, v))]
+
+      ## filter tables
+      backResult = result[src %in% backVertices | dest %in% backVertices]
+      result = result[src %in% frontVertices | dest %in% frontVertices]
+      backSchedule = schedule[src %in% backVertices | dest %in% backVertices]
+      schedule = schedule[src %in% frontVertices | dest %in% frontVertices]
+
+      ## adjust start times
+      backSchedule$start = backSchedule$start - min(backSchedule$start)
+      
+###renumber vertices in backSchedule, backResult, schedule, result
+      backSchedule[src==v, src := 1]
+      backResult[src==v, src := 1]
+      backSchedVertices[vertex==v, vertex := 1]
+      schedVertices[vertex==v, vertex := 2]
+      setkey(schedVertices, vertex)
+      schedule[dest==v, dest := 2]
+      result[dest==v, dest := 2]
+      
+      writeSlice(backResult, paste('ILP.cut_', v, sep=''), backSchedule,
+                 backSchedVertices)
+    }
+    ## write earliest chunk
+    ## Ancestors of each vertex
+    ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+    ## Descendants of each vertex
+    descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+    setkey(schedVertices, vertex)
+    schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
+    schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+    rm(ancestors, descendants)
+    rm(g)
+    
+    writeSlice(result, 'ILP.cut_0', schedule, schedVertices)
+  } else
+    writeSlice(result, sliceTime = 'ILP', x$schedule, schedVertices)
   confName
 }
 
