@@ -390,7 +390,7 @@ writeSlices = function(x, sliceDir='csv'){
   options(scipen=7)
   firstCols = c('e_uid', confCols)
   confName = gsub('[/. ]', '_', x$key)
-  files = Sys.glob(paste(file.path(sliceDir,confName), '*', sep=''))
+  files = Sys.glob(paste(file.path(sliceDir,confName), '*.csv', sep=''))
   mclapply(files, unlink)
   
   schedVertices = rbind(x$vertices, x$slackVertices)
@@ -630,7 +630,7 @@ writeSlices = function(x, sliceDir='csv'){
     rm(ancestors, descendants)
     rm(g)
     
-    writeSlice(result, 'ILP.cut_0', schedule, schedVertices)
+    writeSlice(result, 'ILP.cut_1', schedule, schedVertices)
   } else
     writeSlice(result, sliceTime = 'ILP', x$schedule, schedVertices)
   confName
