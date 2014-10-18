@@ -202,7 +202,7 @@ lpGo = function(...){
 }
 
 ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
-  ##!@todo get all files, then filter by prefix, then by power limit and cut
+  ## get all files, then filter by prefix, then by power limit and cut
   load('../mergedEntries.Rsave', envir=.GlobalEnv)
   cutPattern = 'cut_[0-9]+'
   plPattern = 'p.*w'
@@ -246,7 +246,7 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
                               fileType, sep='.')
                       tryCatch(
                         as.data.table(
-                          read.table(filename, h=T, sep=',')),
+                          read.table(filename, h=T, sep=',', strip.white=T)),
                         error=function(e){
                           warning('failed to read ', filename, immediate.=T)
                           NULL
@@ -404,27 +404,52 @@ loadAndMergeILP = function(...){
   ## merge cuts
   resultsILPMerged <<-
     lapply(
-      resultsILP,
-      function(powerLimits)
-      lapply(powerLimits,
-             function(cuts) 
-             nnapply(ilpFileTypes,
-                     function(fileType)
-                     rbindlist(napply(cuts,
-                                      function(x, name){
-                                        result=x[[fileType]]
-                                        if(is.null(result))
-                                          return(result)
-                                        result[, cut:=name]
-                                        result
-                                      }
-                                      )
-                               )
-                     )
-             )
+      resultsILP, lapply, function(cuts) 
+      nnapply(
+        ilpFileTypes,
+        function(fileType)
+        rbindlist(
+          napply(
+            cuts,
+            function(x, name){
+              result=x[[fileType]]
+              if(is.null(result)) return(result)
+              result[, cut:=as.numeric(name)]
+              result
+            }
+            )
+          )
+        )
       )
+  
+  ## propagate event times across cuts.
 
-  ##!@todo propagate event times across cuts
+  ##!@todo collectives are numbered in order of their occurrence, but
+  ##!e.g. MPI_Waitall()s may not be. As the cut names are vertex
+  ##!labels, we can get the vertex ordering from mergedData.
+  f = function(x){
+### if we somehow avoid zero-length slack edges, the end time of a cut
+### will not correspond to the start time of its last vertex
+    ## place event start times within each cut
+
+    ## rbindlist with 1-row tables breaks data.table
+    x$duration = data.table::copy(x$duration) # please don't delete me!
+    
+    setkey(x$duration, cut)
+    x$duration[, cutEnd:=cumsum(duration)]
+    x$duration[, cutStart:=c(0, head(cutEnd, -1))]
+    setkey(x$events, cut, event)
+    x$events = x$duration[x$events, list(event, cut, start=start+cutStart)]
+    setkey(x$edges, cut, event)
+    setkey(x$events, cut, event)
+    x$edges = x$events[x$edges]
+    ## renumber events, remove cut column
+    x$activeEvents = x$edges[, list(event=unique(event)), by=cut]
+    x$activeEvents = x$activeEvents[, list(newEvent=.GRP), by=list(cut, event)]
+    x$edges[x$activeEvents, c('event', 'cut') := list(newEvent, NULL)] 
+    x
+  }
+  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
 }
 
 if(!interactive()){
