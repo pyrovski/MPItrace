@@ -445,8 +445,10 @@ loadAndMergeILP = function(...){
     x$edges = x$events[x$edges]
     ## renumber events, remove cut column
     x$activeEvents = x$edges[, list(event=unique(event)), by=cut]
-    x$activeEvents = x$activeEvents[, list(newEvent=.GRP), by=list(cut, event)]
-    x$edges[x$activeEvents, c('event', 'cut') := list(newEvent, NULL)] 
+    setkey(x$activeEvents, cut, event)
+    x$activeEvents = x$activeEvents[, list(newEvent=.GRP-1), by=list(cut, event)]
+    x$edges[x$activeEvents, c('event', 'cut') := list(newEvent, NULL)]
+    x$events = x$events[x$activeEvents]
     x
   }
   resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
