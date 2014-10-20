@@ -631,8 +631,8 @@ writeSlices = function(x, sliceDir='csv'){
     rm(g)
     
     writeSlice(result, 'ILP.cut_1', schedule, schedVertices)
-  } else
-    writeSlice(result, sliceTime = 'ILP', x$schedule, schedVertices)
+  } else ## no cuts
+    writeSlice(result, sliceTime = 'ILP.cut_1', x$schedule, schedVertices)
   confName
 }
 
