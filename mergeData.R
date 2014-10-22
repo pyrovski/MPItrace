@@ -436,7 +436,7 @@ writeSlices = function(x, sliceDir='csv'){
     } else { ## ILP
 ### expectedFiles = 
 ### ['confSpace', 'vertices', 'edges', 'edge_weights', 'rank', 'precedence']
-      write.table(schedVertices[, list(vertex, ancestors, descendants)],
+      write.table(schedVertices[, list(vertex, ancestors, descendants, vertexOrder)],
                   file=file.path(sliceDir,
                     paste(sliceName, '.vertices.csv', sep='')),
                   row.names=F, quote=F, sep=',')
@@ -520,7 +520,15 @@ writeSlices = function(x, sliceDir='csv'){
   write.graph(g, file=graphFile, format='dot')
   system(paste('gzip ', graphFile, sep=''), wait=F)
 
-###!@todo write barrier-separated sections separately. This
+  ## compute vertex order
+  vo =
+    schedVertices[order(start)][,list(vertex, vertexOrder=.GRP-1),
+                                by=start][,list(vertex, vertexOrder),
+                                  keyby=vertex]
+  schedVertices = schedVertices[vo]
+  rm(vo)
+
+### write barrier-separated sections separately. This
 ### corresponds to finding vertices through which all paths pass. We
 ### should be able to find such vertices in O(|V|^2*|E|) time by
 ### independently deleting each vertex and testing the number of
@@ -530,8 +538,8 @@ writeSlices = function(x, sliceDir='csv'){
 ### sufficient. The resulting complexity is O(|B|*|V|*|E|), where B is
 ### the set of barrier/high degree edges.
 
-###!@todo don't forget to set the first vertex in each section to 1
-### and last vertex to 2!
+### don't forget that the first vertex in each section is 1
+### and last vertex is 2!
 
   x$numRanks = length(unique(x$edges_inv$rank))
   cuts = list()
@@ -629,7 +637,7 @@ writeSlices = function(x, sliceDir='csv'){
     schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
     rm(ancestors, descendants)
     rm(g)
-    
+
     writeSlice(result, 'ILP.cut_1', schedule, schedVertices)
   } else ## no cuts
     writeSlice(result, sliceTime = 'ILP.cut_1', x$schedule, schedVertices)
