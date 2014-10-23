@@ -432,30 +432,32 @@ loadAndMergeILP = function(...){
   }
   resultsILP <<- f(resultsILP, 4)
 
-  ## merge cuts
-  resultsILPMerged <<-
-    lapply(
-      resultsILP, lapply, function(cuts) 
-      nnapply(
-        ilpFileTypes,
-        function(fileType)
-        rbindlist(
-          napply(
-            cuts,
-            function(x, name){
-              result=x[[fileType]]
-              if(is.null(result)) return(result)
-              result[, cut:=as.numeric(name)]
-              result
-            }
-            )
+  fixed = grep('fixedLP', names(resultsILP))
+  ilp = setdiff(seq(length(resultsILP)), fixed)
+
+  resultsFixedLP <<- resultsILP[fixed]
+  resultsILP <<- resultsILP[ilp]
+
+  f = function(cuts, fileTypes) 
+    nnapply(
+      fileTypes,
+      function(fileType)
+      rbindlist(
+        napply(
+          cuts,
+          function(x, name){
+            result=x[[fileType]]
+            if(is.null(result)) return(result)
+            result[, cut:=as.numeric(name)]
+            result
+          }
           )
         )
       )
   
-  fixed = grep('fixedLP', names(resultsILP))
-  ilp = setdiff(seq(length(resultsILP)), fixed)
-
+  ## merge cuts
+  resultsILPMerged <<- lapply(resultsILP, lapply, f, ilpFileTypes)
+  resultsFixedLPMerged <<- lapply(resultsFixedLP, lapply, f, fixedLPFileTypes)
 
   ## propagate event times across cuts.
 
@@ -486,9 +488,21 @@ loadAndMergeILP = function(...){
     x$events = x$events[x$activeEvents]
     x
   }
-  resultsLPFixedMerged <<- resultsILPMerged[fixed]
-  resultsILPMerged <<- resultsILPMerged[ilp]
   resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
+
+  f = function(x){
+    ## rbindlist with 1-row tables breaks data.table
+    x$duration = data.table::copy(x$duration) # please don't delete me!
+    
+    setkey(x$duration, cut)
+    x$duration[, cutEnd:=cumsum(duration)]
+    x$duration[, cutStart:=c(0, head(cutEnd, -1))]
+    setkey(x$edges, cut)
+    x$edges = x$edges[x$duration[, list(cut, cutStart)]]
+    x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
+    x
+  }
+  resultsFixedLPMerged <<- lapply(resultsFixedLPMerged, lapply, f)
 }
 
 if(!interactive()){
