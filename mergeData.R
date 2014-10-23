@@ -409,17 +409,27 @@ writeSlices = function(x, sliceDir='csv'){
 ###!pareto frontier; in the future, let the optimizer handle a
 ###!piecewise-linear time-power function.
     
+    if(length(grep('ILP', sliceTime)))
+      sliceNameFixed = paste(confName, sub('ILP', 'fixedLP', sliceTime), sep='_')
+    
+    writeTable = function(table, suffix){
+      base = paste(sliceName, suffix, sep='')
+      filename = file.path(sliceDir, base)
+      write.table(table, file=filename,
+                  quote=F, sep=',', row.names=F)
+      if(length(grep('ILP', sliceTime))){
+        filenameFixed = file.path(sliceDir, paste(sliceNameFixed, suffix, sep=''))
+        if(!file.exists(filenameFixed))
+           file.symlink(base, filenameFixed)
+      }
+    }
+
     ## write confSpace
-    write.table(unique(slice[,confCols,with=F], by=confCols),
-                file=file.path(sliceDir, paste(sliceName,'confSpace.csv',sep='.')),
-                quote=F, sep=',', row.names=F)
+    writeTable(unique(slice[,confCols,with=F], by=confCols), '.confSpace.csv')
 
     if(!length(grep('ILP', sliceTime))){
-      write.table(slice[,list(vertex=union(src,dest))],
-                  file=file.path(sliceDir,
-                    paste(sliceName, '.vertices.csv', sep='')),
-                  row.names=F, quote=F, sep=',')
-   
+      writeTable(slice[,list(vertex=union(src,dest))], '.vertices.csv')
+      
       tmpSlice =
         slice[,list(
           ##!@todo this is easier to get from schedule
@@ -434,12 +444,9 @@ writeSlices = function(x, sliceDir='csv'){
           right=head(right,1)),
               by=e_uid]
     } else { ## ILP
-### expectedFiles = 
-### ['confSpace', 'vertices', 'edges', 'edge_weights', 'rank', 'precedence']
-      write.table(schedVertices[, list(vertex, ancestors, descendants, vertexOrder)],
-                  file=file.path(sliceDir,
-                    paste(sliceName, '.vertices.csv', sep='')),
-                  row.names=F, quote=F, sep=',')
+      writeTable(schedVertices[, list(vertex, ancestors, descendants,
+                                      vertexOrder)], '.vertices.csv')
+
       ## write precedence matrix
       e2 = schedule[,list(e_uid, src)]
       setkey(e2, src)
@@ -452,10 +459,7 @@ writeSlices = function(x, sliceDir='csv'){
                     succ$edge=e;succ
                   }))
       setcolorder(precedence, c('edge', 'successor'))
-      write.table(precedence,
-                  file=file.path(sliceDir,
-                    paste(sliceName, '.precedence.csv', sep='')),
-                  row.names=F, quote=F, sep=',')
+      writeTable(precedence, '.precedence.csv')
       
       tmpSlice =
         slice[,list(
@@ -469,28 +473,29 @@ writeSlices = function(x, sliceDir='csv'){
           maxPower=max(power)),
               by=e_uid]
     }
-    write.table(tmpSlice,
-                file=file.path(sliceDir, paste(sliceName, '.edges.csv', sep='')),
-                row.names=F, quote=F, sep=',')
+    writeTable(tmpSlice, '.edges.csv')
     rm(tmpSlice)
     
-    write.table(slice[,c(firstCols, 'weight', 'power'),with=F],
-                file=file.path(sliceDir, paste(sliceName, '.edge_weights.csv', sep='')),
-                row.names=F, quote=F, sep=',')
-    write.table(slice[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
-                file=file.path(sliceDir, paste(sliceName, '.edge_multiConf.csv', sep='')),
-                row.names=F, quote=F, sep=',')
+    writeTable(slice[,c(firstCols, 'weight', 'power'),with=F],
+               '.edge_weights.csv')
+    writeTable(slice[,list(count=nrow(.SD)), by=e_uid][count > 1, list(e_uid)],
+                 '.edge_multiConf.csv')
 
     ## ##!I only need a single rank column. Slack edges always go on the
     ## ##!destination rank, and we don't care about messages. Only the
     ## ##!computation and slack edges should have rank information.
 
     ranks = unique(slice[, list(rank)])
-    write.table(
-      ranks,
-      file=file.path(sliceDir, paste(sliceName, '.rank.csv', sep='')),
-      row.names=F, quote=F, sep=',')
-    save(slice, file=file.path(sliceDir, paste(sliceName, '.Rsave', sep='')))
+    writeTable(ranks, '.rank.csv')
+    base = paste(sliceName, '.Rsave', sep='')
+    filename = file.path(sliceDir, base)
+    save(slice, file=filename)
+    if(length(grep('ILP', sliceTime))){
+      filenameFixed =
+        file.path(sliceDir, paste(sliceNameFixed, '.Rsave', sep=''))
+      if(!file.exists(filenameFixed))
+         file.symlink(base, filenameFixed)
+    }
   }
   mclapply(names(slices), function(sliceTime)
            writeSlice(slices[[sliceTime]], sliceTime, x$schedule))
