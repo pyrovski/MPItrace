@@ -6,6 +6,7 @@ source('./util.R')
 source('~/local/bin/pbutils.R')
 
 ilpFileTypes = c('duration', 'edges', 'events')
+fixedLPFileTypes = c('duration', 'edges')
 
 readLP = function(filename){
   a = fromJSON(file=filename)
@@ -219,6 +220,8 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
   }
   
   nnapply(prefixes, function(prefix){
+    fixed = length(grep('fixedLP', prefix)) > 0
+    
     files = list.files(pattern=paste(prefix, cutPattern, plPattern,
                          'duration$', sep='[.]'))
     powerLimits =
@@ -238,21 +241,28 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
                        '\\1', files)))))
     
     nnapply(powerLimits, function(powerLimit)
-            nnapply(cuts, function(cut)
-                    nnapply(ilpFileTypes, function(fileType){
-                      filename =
-                        paste(prefix, paste('cut_', cut, sep=''),
-                              paste('p', powerLimit, 'w', sep=''),
-                              fileType, sep='.')
-                      tryCatch(
-                        as.data.table(
-                          read.table(filename, h=T, sep=',', strip.white=T)),
-                        error=function(e){
-                          warning('failed to read ', filename, immediate.=T)
-                          NULL
-                        }, finally=NULL)
-                    }
-                            ),
+            nnapply(cuts,
+                    function(cut){
+                      if(fixed)
+                        fileTypes = fixedLPFileTypes
+                      else
+                        fileTypes = ilpFileTypes
+                      
+                      nnapply(fileTypes, function(fileType){
+                        filename =
+                          paste(prefix, paste('cut_', cut, sep=''),
+                                paste('p', powerLimit, 'w', sep=''),
+                                fileType, sep='.')
+                        tryCatch(
+                          as.data.table(
+                            read.table(filename, h=T, sep=',', strip.white=T)),
+                          error=function(e){
+                            warning('failed to read ', filename, immediate.=T)
+                            NULL
+                          }, finally=NULL)
+                      }
+                              )
+                    },
                     mc=T)
             )
   }
@@ -398,9 +408,30 @@ loadAndMergeLP = function(){
   resultsMergedOneConfLE <<- lpMergeAll(resultsOneConfLE)
 }
 
+# note: this also merges fixedLP results. I'm lazy.
 loadAndMergeILP = function(...){
   resultsILP <<- ilpGo(...)
-  
+
+  ## retain only complete cuts
+  ##!@todo get list of expected cuts, warn if any missing
+  f = function(x, depth){
+    if(depth == 1){
+      if(any(sapply(x, is.null)))
+        NULL
+      else
+        x
+    }
+    else {
+      result = lapply(x, f, depth-1)
+      result = result[!sapply(result, is.null)]
+      if(length(result))
+        result
+      else
+        NULL
+    }
+  }
+  resultsILP <<- f(resultsILP, 4)
+
   ## merge cuts
   resultsILPMerged <<-
     lapply(
@@ -422,6 +453,10 @@ loadAndMergeILP = function(...){
         )
       )
   
+  fixed = grep('fixedLP', names(resultsILP))
+  ilp = setdiff(seq(length(resultsILP)), fixed)
+
+
   ## propagate event times across cuts.
 
   ##!@todo collectives are numbered in order of their occurrence, but
@@ -451,6 +486,8 @@ loadAndMergeILP = function(...){
     x$events = x$events[x$activeEvents]
     x
   }
+  resultsLPFixedMerged <<- resultsILPMerged[fixed]
+  resultsILPMerged <<- resultsILPMerged[ilp]
   resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
 }
 
