@@ -398,7 +398,7 @@ writeSlices = function(x, sliceDir='csv'){
   slices = timeslice(x$schedule, schedVertices, x$edges)
   names(slices) = sprintf('%.3f', as.numeric(names(slices)))
 
-  writeSlice = function(slice, sliceTime, schedule, schedVertices){
+  writeSlice = function(slice, sliceTime, schedule, schedVertices, reachable){
     setkey(slice, e_uid)
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
@@ -444,6 +444,18 @@ writeSlices = function(x, sliceDir='csv'){
           right=head(right,1)),
               by=e_uid]
     } else { ## ILP
+      base = paste(sliceName, '.reachable.dat', sep='')
+      filename = file.path(sliceDir, base)
+      filenameFixed =
+        file.path(sliceDir, paste(sliceNameFixed, '.reachable.dat', sep=''))
+      reachableFile = file(filename, 'w')
+      for(vertex in names(reachable))
+        write(paste(vertex, ': ', paste(reachable[[vertex]], collapse=' '),
+                    sep=''), reachableFile)
+      close(reachableFile)
+      if(!file.exists(filenameFixed))
+        file.symlink(base, filenameFixed)
+      
       writeTable(schedVertices[, list(vertex, ancestors, descendants,
                                       vertexEvent=vertexOrder)], '.vertices.csv')
 
@@ -515,12 +527,19 @@ writeSlices = function(x, sliceDir='csv'){
   setkey(schedVertices, vertex)
   ## ancestors, descendants
   g = graph.data.frame(x$schedule[, list(src, dest)])
+  vertexNames = V(g)$name
 ### Ancestors of each vertex
   ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
-  schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
+  schedVertices$ancestors = ancestors[order(as.numeric(vertexNames))]
 ### Descendants of each vertex
   descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
-  schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+  schedVertices$descendants = descendants[order(as.numeric(vertexNames))]
+  rm(ancestors, descendants)
+  reachable = neighborhood(g, order=vcount(g), mode='out')
+  names(reachable) = vertexNames
+  reachable = lapply(reachable, function(x) vertexNames[x])
+  rm(vertexNames)
+  
   graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
   write.graph(g, file=graphFile, format='dot')
   system(paste('gzip ', graphFile, sep=''), wait=F)
@@ -605,10 +624,17 @@ writeSlices = function(x, sliceDir='csv'){
       descendants = neighborhood.size(g2, order=vcount(g2), mode='out') - 1
       backSchedVertices = schedVertices[J(c(v, backVertices))]
       setkey(backSchedVertices, vertex)
-      backSchedVertices$ancestors = ancestors[order(as.numeric(V(g2)$name))]
-      backSchedVertices$descendants = descendants[order(as.numeric(V(g2)$name))]
+      vertexNames = V(g2)$name
+      backSchedVertices$ancestors = ancestors[order(as.numeric(vertexNames))]
+      backSchedVertices$descendants = descendants[order(as.numeric(vertexNames))]
       rm(ancestors, descendants)
-      rm(g2)      
+      
+      reachable = neighborhood(g2, order=vcount(g2), mode='out')
+      names(reachable) = vertexNames
+      reachable = lapply(reachable, function(x) vertexNames[x])
+      rm(vertexNames)
+      
+      rm(g2)
       schedVertices = schedVertices[J(c(frontVertices, v))]
 
       ## filter tables
@@ -630,7 +656,7 @@ writeSlices = function(x, sliceDir='csv'){
       result[dest==v, dest := 2]
       
       writeSlice(backResult, paste('ILP.cut_', v, sep=''), backSchedule,
-                 backSchedVertices)
+                 backSchedVertices, reachable=reachable)
     }
     ## write earliest chunk
     ## Ancestors of each vertex
@@ -638,14 +664,20 @@ writeSlices = function(x, sliceDir='csv'){
     ## Descendants of each vertex
     descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
     setkey(schedVertices, vertex)
-    schedVertices$ancestors = ancestors[order(as.numeric(V(g)$name))]
-    schedVertices$descendants = descendants[order(as.numeric(V(g)$name))]
+    vertexNames = V(g)$name
+    schedVertices$ancestors = ancestors[order(as.numeric(vertexNames))]
+    schedVertices$descendants = descendants[order(as.numeric(vertexNames))]
     rm(ancestors, descendants)
+    reachable = neighborhood(g, order=vcount(g), mode='out')
+    names(reachable) = vertexNames
+    reachable = lapply(reachable, function(x) vertexNames[x])
     rm(g)
 
-    writeSlice(result, 'ILP.cut_1', schedule, schedVertices)
+    writeSlice(result, 'ILP.cut_1', schedule, schedVertices,
+               reachable=reachable)
   } else ## no cuts
-    writeSlice(result, sliceTime = 'ILP.cut_1', x$schedule, schedVertices)
+    writeSlice(result, sliceTime = 'ILP.cut_1', x$schedule, schedVertices,
+               reachable=reachable)
   confName
 }
 
