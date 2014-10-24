@@ -537,7 +537,9 @@ writeSlices = function(x, sliceDir='csv'){
   rm(ancestors, descendants)
   reachable = neighborhood(g, order=vcount(g), mode='out')
   names(reachable) = vertexNames
-  reachable = lapply(reachable, function(x) vertexNames[x])
+  reachable =
+    napply(reachable, function(x, name)
+           Filter(function(x) x != name, vertexNames[x]))
   rm(vertexNames)
   
   graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
@@ -631,7 +633,9 @@ writeSlices = function(x, sliceDir='csv'){
       
       reachable = neighborhood(g2, order=vcount(g2), mode='out')
       names(reachable) = vertexNames
-      reachable = lapply(reachable, function(x) vertexNames[x])
+      reachable =
+        napply(reachable, function(x, name)
+               Filter(function(x) x != name, vertexNames[x]))
       rm(vertexNames)
       
       rm(g2)
@@ -670,7 +674,9 @@ writeSlices = function(x, sliceDir='csv'){
     rm(ancestors, descendants)
     reachable = neighborhood(g, order=vcount(g), mode='out')
     names(reachable) = vertexNames
-    reachable = lapply(reachable, function(x) vertexNames[x])
+    reachable =
+      napply(reachable, function(x, name)
+             Filter(function(x) x != name, vertexNames[x]))
     rm(g)
 
     writeSlice(result, 'ILP.cut_1', schedule, schedVertices,
