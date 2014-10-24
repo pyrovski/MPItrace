@@ -445,7 +445,7 @@ writeSlices = function(x, sliceDir='csv'){
               by=e_uid]
     } else { ## ILP
       writeTable(schedVertices[, list(vertex, ancestors, descendants,
-                                      vertexOrder)], '.vertices.csv')
+                                      vertexEvent=vertexOrder)], '.vertices.csv')
 
       ## write precedence matrix
       e2 = schedule[,list(e_uid, src)]
