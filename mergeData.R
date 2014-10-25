@@ -658,6 +658,7 @@ writeSlices = function(x, sliceDir='csv'){
       setkey(schedVertices, vertex)
       schedule[dest==v, dest := 2]
       result[dest==v, dest := 2]
+      names(reachable)[names(reachable) == as.character(v)] = '1'
       
       writeSlice(backResult, paste('ILP.cut_', v, sep=''), backSchedule,
                  backSchedVertices, reachable=reachable)
