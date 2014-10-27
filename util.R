@@ -529,7 +529,8 @@ slackEdges = function(schedule, activeWaitConf, critPath, needSlack,
 
   ## for LP purposes, 0 is equivalent to NA for power. Weight must be
   ## treated differently.
-  if(!length(nonCritEdgeIndices) || (!doubleSlack && length(needSlack) == 0)){
+  if(!length(nonCritEdgeIndices) ||
+     (!doubleSlack && !missing(needSlack) && length(needSlack) == 0)){
     result = schedule
   } else if(doubleSlack){
     ## doubleSlack forces slack for all tasks
@@ -558,8 +559,9 @@ slackEdges = function(schedule, activeWaitConf, critPath, needSlack,
     slackEdgesPost[, c('e_uid', 'src', 's_uid', 'weight',
                        'start') :=
                    list(-e_uid, -e_uid, NA, NA, start + weight)]
+    ## message edges already have conf and power set
     for(col in names(activeWaitConf))
-      slackEdgesPost[[col]] = activeWaitConf[[col]]
+      slackEdgesPost[type=='comp'][[col]] = activeWaitConf[[col]]
     result =
       rbindlist(list(schedule, origEdges, slackEdgesPost))
   }
