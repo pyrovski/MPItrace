@@ -509,8 +509,9 @@ writeSlices = function(x, sliceDir='csv'){
          file.symlink(base, filenameFixed)
     }
   }
-  mclapply(names(slices), function(sliceTime)
-           writeSlice(slices[[sliceTime]], sliceTime, x$schedule))
+  ## after the fixed-order LP, we don't need this anymore.
+  ##mclapply(names(slices), function(sliceTime)
+  ##         writeSlice(slices[[sliceTime]], sliceTime, x$schedule))
   setkey(x$edges, e_uid)
   setkey(x$schedule, e_uid)
   
