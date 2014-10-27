@@ -395,8 +395,8 @@ writeSlices = function(x, sliceDir='csv'){
   
   schedVertices = rbind(x$vertices, x$slackVertices)
 ###!@todo this would use less memory if we computed one slice at a time
-  slices = timeslice(x$schedule, schedVertices, x$edges)
-  names(slices) = sprintf('%.3f', as.numeric(names(slices)))
+  ##slices = timeslice(x$schedule, schedVertices, x$edges)
+  ##names(slices) = sprintf('%.3f', as.numeric(names(slices)))
 
   writeSlice = function(slice, sliceTime, schedule, schedVertices, reachable){
     setkey(slice, e_uid)
