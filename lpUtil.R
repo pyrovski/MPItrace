@@ -5,7 +5,7 @@ require('parallel')
 source('./util.R')
 source('~/local/bin/pbutils.R')
 
-ilpFileTypes = c('duration', 'edges', 'events')
+ilpFileTypes = c('duration', 'edges')
 fixedLPFileTypes = c('duration', 'edges')
 
 readLP = function(filename){
@@ -488,7 +488,7 @@ loadAndMergeILP = function(...){
     x$events = x$events[x$activeEvents]
     x
   }
-  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
+#  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
 
   f = function(x){
     ## rbindlist with 1-row tables breaks data.table
@@ -502,6 +502,7 @@ loadAndMergeILP = function(...){
     x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
     x
   }
+  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
   resultsFixedLPMerged <<- lapply(resultsFixedLPMerged, lapply, f)
 }
 
