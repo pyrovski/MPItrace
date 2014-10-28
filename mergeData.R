@@ -382,6 +382,11 @@ reduceConfs = function(x){
   ## x$slackVertices$descendants = as.numeric(NA)
   setcolorder(x$slackVertices, names(x$vertices))
   cat(x$key, 'Slack time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+
+  writeGraphFromSchedule(
+    x$schedule, x$critPath, x$key, compile=F,
+    v=rbind(x$vertices,x$slackVertices)[,
+      list(vertex,label)][,label:=paste(label,vertex,sep=': ')])
   return(x)
 }
 
@@ -729,9 +734,9 @@ go = function(){
     cat(entry$key, 'merge time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
     cat(entry$key, 'Reducing configurations\n')
+    merged$key = entry$key
     reduced <- reduceConfs(merged)
     rm(merged)
-    reduced$key <- entry$key
     cat(entry$key, 'Done reducing configurations\n')
     cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
     startTime = Sys.time()
