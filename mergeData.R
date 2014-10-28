@@ -408,11 +408,9 @@ writeSlices = function(x, sliceDir='csv'){
     sliceName = paste(confName, sliceTime, sep='_')
     setcolorder(slice, c(firstCols, setdiff(names(slice), firstCols)))
 
-###!@todo for now, only output one or two configs per edge. This
-###!allows a convex representation of the time-power relationship over
-###!the configuration space. We already output only the configs on the
-###!pareto frontier; in the future, let the optimizer handle a
-###!piecewise-linear time-power function.
+    writeGraphFromSchedule(
+      schedule, key=sliceName, compile=F,
+      v=schedVertices)
     
     if(length(grep('ILP', sliceTime)))
       sliceNameFixed = paste(confName, sub('ILP', 'fixedLP', sliceTime), sep='_')
