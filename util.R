@@ -679,3 +679,33 @@ loadMergedData = function(filename){
   setkey(reduced$edges_inv, e_uid)
   setkey(reduced$schedule, e_uid)
 }
+
+writeGraphFromSchedule =
+  function(sched, critPath, key, compile=T,
+           v=sched[,list(vertex=union(src,dest))])
+{
+  e = sched[,list(e_uid, src,dest,label=paste(rank, '/', e_uid, sep=''))]
+  if(!'label' %in% names(v))
+    v[,label:=as.character(vertex)]
+  else
+    v[,label:=as.character(label)]
+  
+  if(any(sched$e_uid < 0)){
+    e$style = 'solid'
+    e[e_uid < 0, style := 'dotted']
+  }
+  
+  if(!missing(critPath)){
+    e$color = 'black'
+    setkey(e, e_uid)
+    e[J(critPath), color := 'red']
+  }
+    
+  e$e_uid = NULL
+  g=graph.data.frame(e, directed=T, vertices=v)
+  key = gsub('[/. ]', '_', key)
+  filename = paste(key, '.dot', sep='')
+  write.graph(g, filename, format='dot')
+  if(compile)
+    system(paste('dot -Tpdf -O', filename, sep=' '))
+}
