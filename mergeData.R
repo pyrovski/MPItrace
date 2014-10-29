@@ -410,7 +410,7 @@ writeSlices = function(x, sliceDir='csv'){
 
     writeGraphFromSchedule(
       schedule, key=sliceName, compile=F,
-      v=schedVertices)
+      v=schedVertices[, label:=paste(label,vertex,sep=': ')])
     
     if(length(grep('ILP', sliceTime)))
       sliceNameFixed = paste(confName, sub('ILP', 'fixedLP', sliceTime), sep='_')
@@ -701,6 +701,10 @@ go = function(){
   load('mergedEntries.Rsave', envir=.GlobalEnv)
   ##! remove runs with turboboost
   entries = entries[cpuFreq != 2601000]
+  if(!nrow(entries)){
+    cat('no entries!\n')
+    return()
+  }
   setkeyv(entries, entryCols)
   
   measurementCols <<- c('duration','pkg_w','pp0_w','dram_w')
