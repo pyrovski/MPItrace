@@ -198,6 +198,17 @@ reduceConfs = function(x){
   }
   
   cat('Computation edges:', sum(sapply(x$compEdges, nrow)), '\n')
+
+  # extract active thread count from flags bits 4:11
+  #
+  #!@todo this overwrites OMP_NUM_THREADS from the environment; if we
+  #!want this later, we'll have to do something else here
+  for(i in 1:length(x$compEdges)){
+    x$compEdges[[i]]$OMP_NUM_THREADS =
+      bitwShiftR(bitwAnd(x$compEdges[[i]]$flags, 0xff0), 4)
+    x$compEdges[[i]]$flags = bitwAnd(x$compEdges[[i]]$flags, 0x7ffff00f)
+  }
+  
   measurementCols = c('weight','power')
   nonMeasurementCols =
     setdiff(names(x$compEdges[[1]]), c(confCols,measurementCols))
@@ -294,6 +305,7 @@ reduceConfs = function(x){
     messageMinConf = minConf(x$compEdges)[, confCols, with=F]
     x$messageEdges[, confCols := messageMinConf, with=F]
     x$messageEdges[, power := 0]
+    #x$messageEdges[, activeThreads := as.numeric(NA)]
     x$edges = rbind(x$compEdges, x$messageEdges, use.names=T)
   } else
     x$edges = x$compEdges

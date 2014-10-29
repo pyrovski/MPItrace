@@ -576,13 +576,15 @@ reduceNoEffect = function(x, x_inv, measurementCols, by, invKey){
   setkeyv(x, invKey)
   setkeyv(x_inv, invKey)
   if('flags' %in% names(x_inv)){
-    xOMP = x[x_inv[flags & flagBits$omp, list(s_uid)]]
-    xNoOMP = x[x_inv[!flags & flagBits$omp, list(s_uid)]]
+    #xOMP = x[x_inv[bitwAnd(flags, flagBits$omp), list(s_uid)]]
+    xOMP = x[OMP_NUM_THREADS > 1]
+    xNoOMP = x[OMP_NUM_THREADS == 1]
+    #xNoOMP = x[x_inv[!bitwAnd(flags, flagBits$omp), list(s_uid)]]
   } else if('type' %in% names(x)){
     xNoOMP = x[type == 'message']
     xOMP = x[type != 'message']
   }
-  xNoOMP[, OMP_NUM_THREADS:=1]
+  #xNoOMP[, OMP_NUM_THREADS:=1]
   cores = getOption('mc.cores')
   if(!is.null(cores) && cores > 1){
     setkeyv(xNoOMP, by)
