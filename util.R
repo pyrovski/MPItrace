@@ -321,7 +321,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   }
   g = graph.data.frame(edges[,c('src','dest'), with=F])
   if(no.clusters(g) > 1)
-    stop('Graph has more than one cluster!', immediate. = T)
+    stop('Graph has more than one cluster!')
 
   ## this assumes we're going to start edges as soon as their
   ## dependencies are met
@@ -601,6 +601,41 @@ reduceNoEffect = function(x, x_inv, measurementCols, by, invKey){
   rbind(xNoOMP, xOMP, use.names=T)
 }
 
+..pareto = function(result, convex=T){
+  result = result[order(weight, power)][!duplicated(cummin(power))]
+
+  ## this returns a convex power/time frontier, not a convex
+  ## power/performance frontier. The first does not imply the second.
+  if(nrow(result) > 1 && convex){
+    maxWeight = tail(result, 1)[, weight]
+    maxPower = max(result[, power])
+    result = rbind(result[1], result)
+    result[1, c('weight','power') := list(1.01 * maxWeight, 1.01 * maxPower)]
+
+    ## returns convex hull of result with fake point at tail
+    result = result[m_chull(weight, power)]
+    ## if(debug){
+    ##   maxPower = max(result[, power])
+    ##   if(tail(result, 1)[, power] != maxPower)
+    ##     stop('incorrect assumption\n')
+    ## }
+    result = head(result, -1)
+    if(nrow(result) > 2){
+      result[, slope := c(Inf, diff(power)/diff(weight))]
+      ## remove neighboring similar slopes
+      repeat{
+        diffSlope = diff(result[, slope])
+        sel = abs(diffSlope) <= 1e-7
+        if(any(sel, na.rm=T)){
+          result = result[!sel]
+        } else
+          break
+      }
+      result[, slope := NULL]
+    }
+  }
+  result
+}
 
 pareto = function(edges){
   startTime = Sys.time()
@@ -613,40 +648,11 @@ pareto = function(edges){
     if(e %% 1000 == 0)
       cat('e_uid', e, 'of', e_uid_count, '\n')
     ## get Pareto frontier; note that this is not necessarily piecewise linear
-    result = edges[J(e)][order(weight, power)][!duplicated(cummin(power))]
+    result = ..pareto(edges[J(e)])
 
     ## reduce configurations within .5% of each other
     ##result = result[chull(signif(result[,list(weight,power)], 2))][order(weight, power)]
 
-    if(nrow(result) > 1){
-      maxWeight = tail(result, 1)[, weight]
-      maxPower = max(result[, power])
-      result = rbind(result[1], result)
-      result[1, c('weight','power') := list(1.01 * maxWeight, 1.01 * maxPower)]
-      result = result[m_chull(weight, power)]
-      ## if(debug){
-      ##   maxPower = max(result[, power])
-      ##   if(tail(result, 1)[, power] != maxPower)
-      ##     stop('incorrect assumption\n')
-      ## }
-      result = head(result, -1)
-      if(nrow(result) > 2){
-        result[, slope := c(Inf, diff(power)/diff(weight))]
-        ## remove neighboring similar slopes
-        repeat{
-          diffSlope = diff(result[, slope])
-          sel = abs(diffSlope) <= 1e-7
-          if(any(sel, na.rm=T)){
-            result = result[!sel]
-          } else
-            break
-        }
-        result[, slope := NULL]
-      }
-      return(result)
-###!@todo this is not sufficient; it may remove only a subset of offending points
-      ##result = result[order(weight, power)][!duplicated(cummax(diff(power)/diff(weight)))]
-    }
     
     ## if(is.unsorted(result[, weight]))
     ##   stop('Pareto error: weight ', e)
@@ -711,3 +717,32 @@ writeGraphFromSchedule =
   if(compile)
     system(paste('dot -Tpdf -O', filename, sep=' '))
 }
+
+plotPerfPower = function(edges, name='Dummy Region', toPDF=T){
+  main = paste('Power vs. Performace for', name)
+  if(toPDF)
+    pdf(paste(gsub('[/. ]', '_', main), '.pdf', sep=''))
+  else
+    dev.new()
+  edges$perf = 1/edges$weight * min(edges$weight)
+  plot(edges$power,
+       edges$perf,
+       xlim=c(min(edges$power)-5, max(edges$power)*1.1),
+       ylim=c(0,1),
+       main=main,
+       xlab='Power (w)',
+       ylab='Normalized Performance')
+  ep = ..pareto(edges)
+  lines(ep$power, ep$perf, col='red', lwd=2)
+  threadCounts = unique(edges$OMP_NUM_THREADS)
+  edges = edges[order(OMP_NUM_THREADS, cpuFreq)]
+  for(tc in threadCounts){
+    e = edges[OMP_NUM_THREADS == tc]
+    lines(e$power, e$perf)
+    text(tail(e$power,1)+4, tail(e$perf,1) - .03, paste(tc, 'threads'))
+  }
+  ##!@todo key
+  if(toPDF)
+    dev.off()
+}
+

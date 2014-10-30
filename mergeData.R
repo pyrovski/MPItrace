@@ -205,7 +205,7 @@ reduceConfs = function(x){
   #!want this later, we'll have to do something else here
   for(i in 1:length(x$compEdges)){
     x$compEdges[[i]]$OMP_NUM_THREADS =
-      bitwShiftR(bitwAnd(x$compEdges[[i]]$flags, 0xff0), 4)
+      pmax(bitwShiftR(bitwAnd(x$compEdges[[i]]$flags, 0xff0), 4), 1)
     x$compEdges[[i]]$flags = bitwAnd(x$compEdges[[i]]$flags, 0x7ffff00f)
   }
   
@@ -290,6 +290,20 @@ reduceConfs = function(x){
   ##!@todo consider saving this separately; it is huge relative to the
   ##other edge tables
   x$n_edges = x$compEdges[, .SD[OMP_NUM_THREADS==max(OMP_NUM_THREADS)], by=e_uid]
+
+  ## plot perf vs power for one edge
+  setkey(x$compEdges, e_uid)
+  setkey(x$edges_inv, e_uid)
+  threadEdges = unique(x$compEdges[OMP_NUM_THREADS == max(OMP_NUM_THREADS), e_uid])
+  minWeightEdges = x$compEdges[J(threadEdges)][x$edges_inv[,list(e_uid, rank)]][,
+    list(minWeight=min(weight), rank),by=e_uid][minWeight > .02][,
+                                        head(.SD, 4),by=rank][, e_uid]
+  plotEdges = minWeightEdges
+  if(length(plotEdges)){
+    for(e in plotEdges)
+      plotPerfPower(x$compEdges[J(e)],
+                    name=paste(x$key, 'Phase', e))
+  }
   
   cat('Pareto frontiers\n')
   ## get pareto frontiers
@@ -560,7 +574,7 @@ writeSlices = function(x, sliceDir='csv'){
   
   graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
   write.graph(g, file=graphFile, format='dot')
-  system(paste('gzip ', graphFile, sep=''), wait=F)
+  system(paste('gzip -f ', graphFile, sep=''), wait=F)
 
   ## compute vertex order
   vo =
@@ -707,7 +721,7 @@ writeSlices = function(x, sliceDir='csv'){
 ##!@todo this may run into memory limitations. If so, just run the
 ##!configurations one at a time.
 
-go = function(){
+go = function(force=F){
   ## group experiments by entryCols from entries
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
@@ -727,7 +741,7 @@ go = function(){
     startTime = Sys.time()
     filename = paste('mergedData', gsub('[/.]', '_', entry$key),
       'Rsave', sep='.')    
-    if(file.exists(filename)){
+    if(file.exists(filename) & !force){
       cat(entry$key, 'already merged\n')
       return(NULL)
     }
