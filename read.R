@@ -870,7 +870,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
   if(saveGraph){
     graphFile = file.path(path, 'graph.dot')
     write.graph(g, file=graphFile, format='dot')
-    system(paste('gzip ', graphFile, sep=''), wait=F)
+    system(paste('gzip -f ', graphFile, sep=''), wait=F)
   }
   cat('Graph object time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   return(list(graph=g, messageEdges = messageEdges, compEdges = compEdges,
