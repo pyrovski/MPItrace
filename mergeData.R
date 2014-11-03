@@ -780,6 +780,7 @@ go = function(force=F){
                                                                    .SD[which.max(power)],
                                                                    by=rank]$power)
 
+    ## this is non-slack power; slack edges are not present in reduced$edges.
     reduced$minPower =
       sum(reduced$edges[,list(e_uid, power)][,.SD[which.min(power)],
                                              by=e_uid][reduced$edges_inv[,
