@@ -996,9 +996,9 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   ##  g = NA
   cat('tableToGraph time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
-  tableToMarkov(b2, path=path)
-  cat('Markov time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-  startTime = Sys.time()
+  #tableToMarkov(b2, path=path)
+  #cat('Markov time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  #startTime = Sys.time()
   
   result =
     list(##runtimes = b2,
