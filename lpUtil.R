@@ -48,6 +48,7 @@ readLP = function(filename){
   a
 }
 
+#!@todo adapt for flow ilp, fixed ilp
 reconcileLP = function(resultFile, timesliceFile, powerLimit, mode='split'){
   result = readLP(resultFile)
   vertexStartTimes = result$Solution[[2]]$Variable$vertexStartTime
@@ -225,13 +226,13 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
     files = list.files(pattern=paste(prefix, cutPattern, plPattern,
                          'duration$', sep='[.]'))
     powerLimits =
-      as.numeric(
-        sub('p([0-9]+)w', '\\1',
-            unique(sub(paste('.*', cutPattern, paste('(', plPattern, ')', sep=''),
-                             'duration$', sep='[.]'),
-                       '\\1', files))))
+      sub('p([0-9.]+)w', '\\1',
+          unique(sub(paste('.*', cutPattern, paste('(', plPattern, ')', sep=''),
+                           'duration$', sep='[.]'),
+                     '\\1', files)))
     if(length(powerLimitInt))
-      powerLimits = intersect(powerLimits, powerLimitInt)
+      powerLimits =
+        intersect(as.numeric(powerLimits), as.numeric(powerLimitInt))
     
     cuts =
       sort(as.numeric(
@@ -495,8 +496,12 @@ loadAndMergeILP = function(...){
     x$duration = data.table::copy(x$duration) # please don't delete me!
     
     setkey(x$duration, cut)
-    x$duration[, cutEnd:=cumsum(duration)]
-    x$duration[, cutStart:=c(0, head(cutEnd, -1))]
+    x$duration$cutEnd = as.numeric(NA)
+    x$duration$cutStart = as.numeric(NA)
+    x$duration[duration != 'infeasible', cutEnd:=cumsum(duration)]
+    x$duration[duration != 'infeasible', cutStart:=c(0, head(cutEnd, -1))]
+    x$duration[duration == 'infeasible', duration := as.numeric(NA)]
+    x$duration$duration = as.numeric(x$duration$duration)
     setkey(x$edges, cut)
     x$edges = x$edges[x$duration[, list(cut, cutStart)]]
     x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
