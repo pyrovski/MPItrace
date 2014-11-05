@@ -710,7 +710,8 @@ writeGraphFromSchedule =
   }
     
   e$e_uid = NULL
-  g=graph.data.frame(e, directed=T, vertices=v)
+  g=graph.data.frame(e, directed=T,
+    vertices=v[, intersect(names(v), c('vertex','label')), with=F])
   key = gsub('[/. ]', '_', key)
   filename = paste(key, '.dot', sep='')
   write.graph(g, filename, format='dot')
