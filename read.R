@@ -194,7 +194,14 @@ readRuntime = function(filename, maxRank, path='.'){
   rank = as.integer(rev(strsplit(filename, '[.]')[[1]])[2])
   a$uid = (1:nrow(a))+(rank)/(maxRank+1)
   
-  splitReqs = strsplit(a$reqs,',')
+  # handle new comms
+  sel = bitwAnd(a$flags, flagBits$newComm) > 0
+  if(any(sel))
+    newComms = which(sel)
+  else
+    newComms = as.integer(NA)
+  
+  splitReqs = strsplit(a$reqs[!sel],',')
   uniqueReqs = Filter(Negate(is.na), unique(unlist(splitReqs)))
   uniqueReqs = setdiff(uniqueReqs, MPI_REQUEST_NULL)
   uidsByReq =
@@ -202,9 +209,9 @@ readRuntime = function(filename, maxRank, path='.'){
       sel = grep(paste(req, '(,|$)', sep=''), a$reqs)
       a[sel, uid]
     })
-  a$reqs = splitReqs
+  a$reqs[!sel] = splitReqs
   ##a[comm == '(nil)',comm:='']
-  return(list(runtime=a, uidsByReq=uidsByReq))
+  return(list(runtime=a, uidsByReq=uidsByReq, newComms=newComms))
 }
 
 readAll = function(path='.'){
@@ -217,6 +224,7 @@ readAll = function(path='.'){
   runtimes = mclapply(files, readRuntime, maxRank=max(ranks), path=path)
   names(runtimes) = ranks
   uidsByReq = lapply(runtimes, '[[', 'uidsByReq')
+  newComms = lapply(runtimes, '[[', 'newComms')
   runtimes = lapply(runtimes, '[[', 'runtime')
   runtimes =
     napply(runtimes, function(x, name){x$rank = as.numeric(name);x})
@@ -228,13 +236,14 @@ readAll = function(path='.'){
     rbindlist(lapply(files, function(file)
                      read.table(file.path(path, file), h=T,
                                 stringsAsFactors=F)))
-  return(list(runtimes=runtimes, assignments=assignments, uidsByReq=uidsByReq)) }
+  return(list(runtimes=runtimes, assignments=assignments, uidsByReq=uidsByReq,
+              newComms=newComms)) }
 
 ## single rank only!
 
 ## Writing replays is important because the resulting traces will have
 ## resolved MPI_ANY_TAG and MPI_ANY_SOURCE.
-.deps = function(x, rank, uidsByReq, writeReplay=F, path='.'){
+.deps = function(x, rank, uidsByReq, newComms, writeReplay=F, path='.'){
   ranks = unique(x$rank)
   if(length(ranks) > 1)
     stop('Too many ranks in .deps()!')
@@ -308,11 +317,12 @@ readAll = function(path='.'){
     commTable = rbindlist(lapply(sel, f))
     commTable$rank = rank
     commTable$ranks =
-      lapply(commTable$source, function(r)
-             as.integer(unlist(x[1 + x[uid == r, which=T], reqs])))
+      lapply(x[commTable$source+1, reqs],
+             function(r) as.integer(strsplit(r, ',')[[1]]))
 
     sel = x[!name %in% MPI_Comm_sources | is.na(size) & comm != new_MPI_COMM_NULL, which=T]
     x = x[sel]
+    rm(sel)
   } else
     commTable = NULL
 
@@ -979,7 +989,8 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   startTime = Sys.time()
   assignments = a$assignments
   uidsByReq = a$uidsByReq
-  b = preDeps(a$runtimes, uidsByReq, path=path)
+  newComms = a$newComms
+  b = preDeps(a$runtimes, uidsByReq, newComms, path=path)
   cat('preDeps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   rm(a)
