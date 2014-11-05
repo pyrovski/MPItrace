@@ -503,7 +503,7 @@ loadAndMergeILP = function(...){
     x$duration[duration == 'infeasible', duration := as.numeric(NA)]
     x$duration$duration = as.numeric(x$duration$duration)
     setkey(x$edges, cut)
-    x$edges = x$edges[x$duration[, list(cut, cutStart)]]
+    x$edges = x$edges[x$duration[!is.na(duration), list(cut, cutStart)]]
     x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
     x
   }
@@ -512,7 +512,7 @@ loadAndMergeILP = function(...){
 }
 
 if(!interactive()){
-  loadAndMergeLP()
+##  loadAndMergeLP()
   loadAndMergeILP()
 }
 

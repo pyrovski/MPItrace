@@ -368,6 +368,9 @@ readAll = function(path='.'){
       reqState = factor('inactive', levels=reqStates)
       for(reqUID in uidsByReq[[req]]){
         reqIndex = x[J(reqUID), which=T]
+        if(!reqIndex){
+          stop("missing UID: ", reqUID, " in x!\n")
+        }
         if(reqState == 'inactive'){
           if(x[reqIndex, name] %in% MPI_Req_inits){
             lastInit = reqIndex
@@ -414,6 +417,7 @@ readAll = function(path='.'){
               frefs[[lastInit]] = union(frefs[[lastInit]], reqIndex)
           } else if(x[reqIndex, name] %in% MPI_Req_frees){
             reqState = factor('inactive')
+            ##!@todo reqIndex is 0 for nekbone; a uid is missing, so line 370 assigns 0 to 
           } else if(x[reqIndex, name] %in% MPI_Req_inits){
             lastInit = reqIndex
             reqState = factor('init')

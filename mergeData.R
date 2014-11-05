@@ -50,6 +50,7 @@ mergeConfs = function(conf, entries){
   cat(conf$key, 'loaded data\n')
   
   dates = sapply(result, '[[', 'date')
+  names(result) = dates
 
 ### Merge between runs of the same config. This entails matching
 ### hashes, requests, and communicators between runs. After the
@@ -98,7 +99,6 @@ mergeConfs = function(conf, entries){
   
   ##!@todo match hashes in vertices tables
   
-  rm(result)
  
 ### Comms should already be unified; I mapped MPI_COMM_WORLD and
 ### MPI_COMM_NULL to -1 and -2, respectively. The other comms should
@@ -106,9 +106,12 @@ mergeConfs = function(conf, entries){
 
 ###!@todo I disabled these because we don't have enough RAM to load
 ###!the runtimes table for all runs in a sequence.
-  ## setkey(runtimes, date, rank)
+
+  ## with no created communicators, the comms tables will all be NULL
+  
+  ## setkey(result, date, rank)
   ## commSeqs = lapply(dates, function(d){
-  ##   runtimes[J(d)][comm != '(nil)']$comm
+  ##   result[J(d)][comm != '(nil)']$comm
   ## })
   ## if(length(unique(commSeqs)) != 1){
   ##   errMsg = "FIXME match comms between runs"
@@ -137,6 +140,8 @@ mergeConfs = function(conf, entries){
   ## if(any(uidCheck[,2:ncol(uidCheck),with=F] != 1)){
   ##   stop(conf$key, ' failed UID check')
   ## }
+
+  rm(result)
 
   list(##runtimes=runtimes,
        assignments=assignments,
