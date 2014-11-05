@@ -23,7 +23,7 @@ debug=T
 options(datatable.nomatch=0)
 
 #!@todo get this from a file
-flagBits = list(omp=1, spin=2) ## bit masks, not indices
+flagBits = list(omp=1, spin=2, newComm=0x1000) ## bit masks, not indices
 minDuration = .0000001
 
 colClasses = c(
