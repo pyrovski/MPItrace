@@ -583,10 +583,11 @@ writeSlices = function(x, sliceDir='csv'){
 
   ## compute vertex order
   vo =
-    schedVertices[order(start)][,list(vertex, vertexOrder=.GRP-1),
-                                by=start][,list(vertex, vertexOrder),
-                                  keyby=vertex]
-  schedVertices = schedVertices[vo]
+    schedVertices[vertex > 0][order(start)][,list(
+      vertex, vertexOrder=.GRP-1
+      ),by=start][,list(vertexOrder), keyby=vertex]
+  schedVertices[vo, vertexOrder:=vertexOrder]
+  schedVertices[is.na(vertexOrder), vertexOrder:=-1]
   rm(vo)
 
 ### write barrier-separated sections separately. This
