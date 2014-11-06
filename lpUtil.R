@@ -3,6 +3,7 @@ require('rjson')
 require('data.table')
 require('parallel')
 source('./util.R')
+source('./read.R')
 source('~/local/bin/pbutils.R')
 
 ilpFileTypes = c('duration', 'edges')
@@ -409,7 +410,7 @@ loadAndMergeLP = function(){
 
 # note: this also merges fixedLP results. I'm lazy.
 loadAndMergeILP = function(...){
-  resultsILP <<- ilpGo(...)
+  resultsILP = ilpGo(...)
 
   ## retain only complete cuts
   ##!@todo get list of expected cuts, warn if any missing
@@ -429,13 +430,13 @@ loadAndMergeILP = function(...){
         NULL
     }
   }
-  resultsILP <<- f(resultsILP, 4)
+  resultsILP = f(resultsILP, 4)
 
   fixed = grep('fixedLP', names(resultsILP))
   ilp = setdiff(seq(length(resultsILP)), fixed)
 
-  resultsFixedLP <<- resultsILP[fixed]
-  resultsILP <<- resultsILP[ilp]
+  resultsFixedLP = resultsILP[fixed]
+  resultsILP = resultsILP[ilp]
 
   f = function(cuts, fileTypes) 
     nnapply(
@@ -455,61 +456,65 @@ loadAndMergeILP = function(...){
       )
   
   ## merge cuts
-  resultsILPMerged <<- lapply(resultsILP, lapply, f, ilpFileTypes)
-  resultsFixedLPMerged <<- lapply(resultsFixedLP, lapply, f, fixedLPFileTypes)
+  resultsILPMerged = lapply(resultsILP, lapply, f, ilpFileTypes)
+  resultsFixedLPMerged = lapply(resultsFixedLP, lapply, f, fixedLPFileTypes)
 
   ## propagate event times across cuts.
 
   ##!@todo collectives are numbered in order of their occurrence, but
   ##!e.g. MPI_Waitall()s may not be. As the cut names are vertex
   ##!labels, we can get the vertex ordering from mergedData.
-  f = function(x){
-### if we somehow avoid zero-length slack edges, the end time of a cut
-### will not correspond to the start time of its last vertex
-    ## place event start times within each cut
+##   f = function(x){
+## ### if we somehow avoid zero-length slack edges, the end time of a cut
+## ### will not correspond to the start time of its last vertex
+##     ## place event start times within each cut
 
-    setkey(x$duration, cut)
-    x$duration[, cutEnd:=cumsum(duration)]
-    x$duration[, cutStart:=c(0, head(cutEnd, -1))]
-    setkey(x$events, cut, event)
-    x$events = x$duration[x$events, list(event, cut, start=start+cutStart)]
-    setkey(x$edges, cut, event)
-    setkey(x$events, cut, event)
-    x$edges = x$events[x$edges]
-    ## renumber events, remove cut column
-    x$activeEvents = x$edges[, list(event=unique(event)), by=cut]
-    setkey(x$activeEvents, cut, event)
-    x$activeEvents = x$activeEvents[, list(newEvent=.GRP-1), by=list(cut, event)]
-    x$edges[x$activeEvents, c('event', 'cut') := list(newEvent, NULL)]
-    x$events = x$events[x$activeEvents]
-    x
-  }
-#  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
+##     setkey(x$duration, cut)
+##     x$duration[, cutEnd:=cumsum(duration)]
+##     x$duration[, cutStart:=c(0, head(cutEnd, -1))]
+##     setkey(x$events, cut, event)
+##     x$events = x$duration[x$events, list(event, cut, start=start+cutStart)]
+##     setkey(x$edges, cut, event)
+##     setkey(x$events, cut, event)
+##     x$edges = x$events[x$edges]
+##     ## renumber events, remove cut column
+##     x$activeEvents = x$edges[, list(event=unique(event)), by=cut]
+##     setkey(x$activeEvents, cut, event)
+##     x$activeEvents = x$activeEvents[, list(newEvent=.GRP-1), by=list(cut, event)]
+##     x$edges[x$activeEvents, c('event', 'cut') := list(newEvent, NULL)]
+##     x$events = x$events[x$activeEvents]
+##     x
+##   }
+## #  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
 
-  f = function(x){
-    setkey(x$duration, cut)
-    x$duration$cutEnd = as.numeric(NA)
-    x$duration$cutStart = as.numeric(NA)
-    x$duration[duration != 'infeasible', cutEnd:=cumsum(duration)]
-    x$duration[duration != 'infeasible', cutStart:=c(0, head(cutEnd, -1))]
-    x$duration[duration == 'infeasible', duration := as.numeric(NA)]
-    x$duration$duration = as.numeric(x$duration$duration)
-    setkey(x$edges, cut)
-    x$edges = x$edges[x$duration[!is.na(duration), list(cut, cutStart)]]
-    x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
-
-    ## match NAs for message edges
-    x$edges[power < 1, power := as.numeric(NA)]
-    x
-  }
-  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
-  resultsFixedLPMerged <<- lapply(resultsFixedLPMerged, lapply, f)
+  assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
+  assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
+  NULL
 }
 
 if(!interactive()){
 ##  loadAndMergeLP()
   loadAndMergeILP()
   writeILPSchedules()
+}
+
+accumulateCutStarts = function(x, orderedCuts){
+  setkey(x$duration, cut)
+  x$duration = x$duration[J(orderedCuts)]
+  x$duration$cutEnd = as.numeric(NA)
+  x$duration$cutStart = as.numeric(NA)
+  x$duration[duration != 'infeasible', cutEnd:=cumsum(duration)]
+  x$duration[duration != 'infeasible', cutStart:=c(0, head(cutEnd, -1))]
+  x$duration[duration == 'infeasible', duration := as.numeric(NA)]
+  x$duration$duration = as.numeric(x$duration$duration)
+  setkey(x$duration, cut)
+  setkey(x$edges, cut)
+  x$edges = x$edges[x$duration[!is.na(duration), list(cut, cutStart)]]
+  x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
+
+  ## match NAs for message edges
+  x$edges[power < 1, power := as.numeric(NA)]
+  x
 }
 
 ## For each command, for each power limit, write a configuration
@@ -520,11 +525,53 @@ if(!interactive()){
 ## require request IDs and communicator IDs. Perhaps it would be
 ## easier to load an existing replay schedule and add config options.
 writeILPSchedules = function(){
-  result = lapply(resultsFixedLPMerged, lapply, function(pl){
-    print(nrow(pl$duration))
-    duration = pl$duration[, max(cutEnd, na.rm=T)]
-    duration
-  })
+  result =
+    nnapply(names(resultsFixedLPMerged), function(prefix){
+      origPrefix = sub('_fixedLP', '', prefix)
+      eReduced = new.env()
+      load(paste('../mergedData', origPrefix, 'Rsave', sep='.'), envir=eReduced)
+
+      
+      ranks = unique(eReduced$reduced$assignments$rank)
+      eRuntimes = new.env()
+      runtimes =
+        load(paste('../', head(eReduced$reduced$assignments, 1)$date,
+                   '/merged.Rsave',sep=''), envir=eRuntimes)
+
+      ##!@todo eReduced and eRuntimes have enough info to recreate the schedule?
+      edges_inv = eReduced$reduced$edges_inv
+      setkey(edges_inv, e_uid)
+      vertices = eReduced$reduced$vertices
+      rSched = eReduced$reduced$schedule
+      rm(eReduced)
+
+###!@todo this should be done in loadAndMergeILP, but requires
+###!knowledge of vertex order that lives in merged_.Rsave.
+      setkey(vertices, vertex)
+      orderedCuts =
+        vertices[J(
+          resultsFixedLPMerged[[prefix]][[1]]$duration$cut
+          )][order(start), vertex]
+      resultsILPMerged =
+        lapply(resultsILPMerged, lapply, accumulateCutStarts, orderedCuts)
+      resultsFixedLPMerged =
+        lapply(resultsFixedLPMerged, lapply, accumulateCutStarts, orderedCuts)
+      assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
+      assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
+
+### convert message src and dest from vertices to ranks in MPI_COMM_WORLD
+
+      lapply(resultsFixedLPMerged[[prefix]], function(pl){
+        setkey(pl$edges, e_uid)
+
+        ## merge sched with reduced edges_inv
+        sched = edges_inv[pl$edges]
+
+        cat()
+      })
+      rm(e)
+      NULL
+    })
   result
 }
 
