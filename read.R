@@ -866,7 +866,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
 
     messageEdges =
       messages[, list(size, src=src_vertex, dest=dest_vertex,
-                      rank=dest_rank, s_uid=o_src, d_uid=dest, weight)]
+                      rank=dest_rank, s_rank=src_rank, s_uid=o_src, d_uid=dest, weight)]
     rm(messages)
     commonNames = intersect(names(edges), names(messageEdges))
     messageOnlyNames = setdiff(names(messageEdges), commonNames)
