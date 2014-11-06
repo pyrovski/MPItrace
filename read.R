@@ -233,7 +233,7 @@ readAll = function(path='.'){
   files = sort(list.files(path,'assign.*.dat'))
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
   assignments =
-    rbindlist(lapply(files, function(file)
+    .rbindlist(lapply(files, function(file)
                      read.table(file.path(path, file), h=T,
                                 stringsAsFactors=F)))
   return(list(runtimes=runtimes, assignments=assignments, uidsByReq=uidsByReq,
@@ -314,7 +314,7 @@ readAll = function(path='.'){
                         sink = sink,
                         stringsAsFactors=F))
     }
-    commTable = rbindlist(lapply(sel, f))
+    commTable = .rbindlist(lapply(sel, f))
     commTable$rank = rank
     commTable$ranks =
       lapply(x[commTable$source+1, reqs],
@@ -465,6 +465,7 @@ readAll = function(path='.'){
   x[, tag := unlist(tag)]
 
   if(writeReplay){
+    #!@todo make this a function
     cat('Rank', rank, 'writing replay\n')
     ##!@todo the replay fscanf is going to trip on NAs
     cols = names(colClasses)
@@ -493,9 +494,9 @@ deps = function(x){
   if(debug)
     cat('Merging tables\n')
   ## merge tables
-  commTable = rbindlist(lapply(x, '[[', 'comms'))
+  commTable = .rbindlist(lapply(x, '[[', 'comms'))
  
-  x = rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
+  x = .rbindlist(lapply(x, '[[', 'runtimes'))[order(start)]
   ranks = sort(unique(x$rank))
   
   if(debug)
@@ -708,7 +709,7 @@ messageDeps = function(x){
       if(length(sendInit_frefs)){
         sendStarts = xStarts[J(sendInit_frefs), nonMessageCols, with=F]
 ###!@ todo all messageCols should be identical, so something like this
-###!should work: rbindlist(rep.int(mids[mid], nrow(sendStarts))))
+###!should work: .rbindlist(rep.int(mids[mid], nrow(sendStarts))))
         sendStarts =
           cbind(sendStarts, 
                 matching[J(unlist(sendStarts[, bref])), messageCols, with=F])
@@ -744,7 +745,7 @@ messageDeps = function(x){
     result =
       lapply(1:nrow(sends), function(row)
              f_noSideEffects(sends[row], recvs[row]))
-    result = rbindlist(result)
+    result = .rbindlist(result)
     return(result)
   }
 
@@ -817,7 +818,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
             x[sel+1,list(dest=vertex, d_uid=uid)])
     result[, rank:=r]
   }
-  compEdges = rbindlist(mclapply(unique(x[, rank]), f))
+  compEdges = .rbindlist(mclapply(unique(x[, rank]), f))
   
   ## delete computation rows
   x = x[!is.na(name)]
@@ -901,7 +902,7 @@ tableToMarkov = function(x, rank=0, path='.'){
   hashes = unique(x[!is.na(name) & name != 'MPI_Finalize']$hash)
   vertices =  x[!is.na(name), list(label=unique(name)), by=hash]
   edges =
-    rbindlist(
+    .rbindlist(
       mclapply(hashes, function(h){
       ## successor hashes
       successors = y[J(y[J(x[J(h)]$succ)]$succ)]$hash

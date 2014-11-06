@@ -74,7 +74,7 @@ mergeConfs = function(conf, entries){
     r[[name]]
   }
   
-  assignments = rbindlist(lapply(result, f, name='assignments'))
+  assignments = .rbindlist(lapply(result, f, name='assignments'))
   for(i in 1:length(result)) result[[i]]$assignments=NULL
   gc()
 
@@ -183,7 +183,7 @@ reduceConfs = function(x){
     measurementCols = c('weight')
 ### this unique is ok because message weights are identical between
 ### runs
-    x$messageEdges = unique(rbindlist(x$messageEdges))
+    x$messageEdges = unique(.rbindlist(x$messageEdges))
     cat('Message edges:', nrow(x$messageEdges), '\n')
     by = c('s_uid','d_uid')
     cores = getOption('mc.cores')
@@ -192,7 +192,7 @@ reduceConfs = function(x){
       s_uids = unique(x$messageEdges[, s_uid])
       s_uid_chunks = chunk(s_uids, length(s_uids)/cores)
       rm(s_uids)
-      x$messageEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids)
+      x$messageEdges = .rbindlist(mclapply(s_uid_chunks, function(s_uids)
         x$messageEdges[J(s_uids)][,lapply(.SD, mean),by=by]))
       rm(s_uid_chunks)
     } else
@@ -229,7 +229,7 @@ reduceConfs = function(x){
   
   by = c('s_uid','d_uid',confCols)
   x$compEdges =
-    rbindlist(mclapply(x$compEdges, function(compEdges)
+    .rbindlist(mclapply(x$compEdges, function(compEdges)
                        compEdges[, c(by, measurementCols), with=F]
                        ))
   setkey(x$compEdges, s_uid)
@@ -238,7 +238,7 @@ reduceConfs = function(x){
     s_uids = unique(x$compEdges[, s_uid])
     s_uid_chunks = chunk(s_uids, length(s_uids)/cores)
     rm(s_uids)
-    x$compEdges = rbindlist(mclapply(s_uid_chunks, function(s_uids)
+    x$compEdges = .rbindlist(mclapply(s_uid_chunks, function(s_uids)
       x$compEdges[J(s_uids)][,lapply(.SD, mean),by=by]))
     rm(s_uid_chunks)
   } else
@@ -498,12 +498,12 @@ writeSlices = function(x, sliceDir='csv'){
       setkey(e2, src)
       setkey(schedule, e_uid)
       precedence =
-        rbindlist(lapply(schedule[, e_uid],
-                  function(e){
-                    d = schedule[J(e), dest]
-                    succ=e2[J(d), list(successor=e_uid)]
-                    succ$edge=e;succ
-                  }))
+        .rbindlist(lapply(schedule[, e_uid],
+                          function(e){
+                            d = schedule[J(e), dest]
+                            succ=e2[J(d), list(successor=e_uid)]
+                            succ$edge=e;succ
+                          }))
       setcolorder(precedence, c('edge', 'successor'))
       writeTable(precedence, '.precedence.csv')
       

@@ -9,7 +9,7 @@ mcdtby = function(x, chunkBy, by, f, SDcols='all'){
     sets = chunk(groups, length(groups)/cores)
     ##!@todo
     rm(groups)
-    result = rbindlist(mclapply(sets, function(s) x[s]))
+    result = .rbindlist(mclapply(sets, function(s) x[s]))
   } else {
     if(SDcols == 'all')
       result = x[, f(.SD), by=by]
@@ -94,7 +94,7 @@ rebuildScheduleWithSlack = function(e, activeWaitConf){
   ## nullify 0-length slack edges
   ranks = unique(sched[, rank])
   setkey(sched, rank)
-  sched = rbindlist(mclapply(ranks, function(r){
+  sched = .rbindlist(mclapply(ranks, function(r){
     sched = sched[J(r)][order(start, -e_uid)]
     dupes = duplicated(sched[, start])
     sched[dupes, power := 0]
@@ -548,7 +548,7 @@ slackEdges = function(schedule, activeWaitConf, critPath, needSlack,
       slackEdgesPre[[col]] = activeWaitConf[[col]]
       slackEdgesPost[[col]] = activeWaitConf[[col]]
     }
-    result = rbindlist(list(slackEdgesPre, origEdges, slackEdgesPost))
+    result = .rbindlist(list(slackEdgesPre, origEdges, slackEdgesPost))
     rm(slackEdgesPre, slackEdgesPost)
   } else { ## !doubleSlack && length(needSlack) > 0
 ### !doubleSlack forces slack for non-critical edges in the initial schedule
@@ -563,7 +563,7 @@ slackEdges = function(schedule, activeWaitConf, critPath, needSlack,
     for(col in names(activeWaitConf))
       slackEdgesPost[type=='comp'][[col]] = activeWaitConf[[col]]
     result =
-      rbindlist(list(schedule, origEdges, slackEdgesPost))
+      .rbindlist(list(schedule, origEdges, slackEdgesPost))
   }
 
   attr(result, 'doubleSlack') <- doubleSlack
@@ -592,7 +592,7 @@ reduceNoEffect = function(x, x_inv, measurementCols, by, invKey){
     chunks = chunk(u, nrow(u)/cores)
     rm(u)
     xNoOMP =
-      rbindlist(mclapply(chunks, function(ch)
+      .rbindlist(mclapply(chunks, function(ch)
                          ##!@todo fix warning
                          xNoOMP[ch,lapply(.SD, mean), by=by]))
     rm(chunks)
@@ -660,7 +660,7 @@ pareto = function(edges){
     ##   stop('Pareto error: power ', e)
     result
   }
-  result = rbindlist(mclapply(unique(edges[, e_uid]), .pareto))
+  result = .rbindlist(mclapply(unique(edges[, e_uid]), .pareto))
   cat('Pareto time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   result
 }

@@ -21,7 +21,7 @@ readLP = function(filename){
         b = b[grep(paste(name, '[[]', sep=''), names(b))]
         map = strsplit(gsub('[]]', '', names(b)), '[[]')
         indices = as.numeric(sapply(map, '[[', 2))
-        b = rbindlist(lapply(b, as.data.table))
+        b = .rbindlist(lapply(b, as.data.table))
         b$index = indices
         if('Id' %in% names(b))
           b[, Id := NULL]
@@ -156,7 +156,7 @@ reconcileLP = function(resultFile, timesliceFile, powerLimit, mode='split'){
         return(m)
       }
     })
-    edges = rbindlist(edges)
+    edges = .rbindlist(edges)
     result$edges = edges
   }
 
@@ -276,8 +276,6 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
 ##
 ## - timeslices have not been combined
 ##
-
-
 asdf = function(ts, rankPowerLimits){
   ## unlimited power
   minTime = ts$edges[, .SD[which.min(weight)], by=e_uid]
@@ -304,13 +302,13 @@ asdf = function(ts, rankPowerLimits){
 ##!and we need to recompute start times and slack edges.
 lpMerge = function(slices, name){
   edges =
-    rbindlist(napply(slices, function(e, name) {
+    .rbindlist(napply(slices, function(e, name) {
       e$edges$ts = name
       e$edges
     }, mc=T))
   
   vertices =
-    rbindlist(napply(slices, function(e, name) {
+    .rbindlist(napply(slices, function(e, name) {
       e$vertices$ts =name
       e$vertices
     }, mc=T))
@@ -443,7 +441,7 @@ loadAndMergeILP = function(...){
     nnapply(
       fileTypes,
       function(fileType)
-      rbindlist(
+      .rbindlist(
         napply(
           cuts,
           function(x, name){
@@ -470,9 +468,6 @@ loadAndMergeILP = function(...){
 ### will not correspond to the start time of its last vertex
     ## place event start times within each cut
 
-    ## rbindlist with 1-row tables breaks data.table
-    x$duration = data.table::copy(x$duration) # please don't delete me!
-    
     setkey(x$duration, cut)
     x$duration[, cutEnd:=cumsum(duration)]
     x$duration[, cutStart:=c(0, head(cutEnd, -1))]
@@ -492,9 +487,6 @@ loadAndMergeILP = function(...){
 #  resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
 
   f = function(x){
-    ## rbindlist with 1-row tables breaks data.table
-    x$duration = data.table::copy(x$duration) # please don't delete me!
-    
     setkey(x$duration, cut)
     x$duration$cutEnd = as.numeric(NA)
     x$duration$cutStart = as.numeric(NA)
