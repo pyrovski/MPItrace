@@ -505,6 +505,9 @@ loadAndMergeILP = function(...){
     setkey(x$edges, cut)
     x$edges = x$edges[x$duration[!is.na(duration), list(cut, cutStart)]]
     x$edges[, c('start', 'cutStart') := list(start+cutStart, NULL)]
+
+    ## match NAs for message edges
+    x$edges[power < 1, power := as.numeric(NA)]
     x
   }
   resultsILPMerged <<- lapply(resultsILPMerged, lapply, f)
@@ -514,6 +517,23 @@ loadAndMergeILP = function(...){
 if(!interactive()){
 ##  loadAndMergeLP()
   loadAndMergeILP()
+  writeILPSchedules()
+}
+
+## For each command, for each power limit, write a configuration
+## schedule. This involves matching scheduled edges with edges from
+## the original schedule, verifying that all edges were scheduled in
+## the solution, matching edges with corresponding start vertices,
+## writing vertices and edges in start order per rank, etc. We also
+## require request IDs and communicator IDs. Perhaps it would be
+## easier to load an existing replay schedule and add config options.
+writeILPSchedules = function(){
+  result = lapply(resultsFixedLPMerged, lapply, function(pl){
+    print(nrow(pl$duration))
+    duration = pl$duration[, max(cutEnd, na.rm=T)]
+    duration
+  })
+  result
 }
 
 ## match one-config tasks and two-config tasks, including schedule
