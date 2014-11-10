@@ -316,7 +316,7 @@ readAll = function(path='.'){
     }
     commTable = .rbindlist(lapply(sel, f))
     commTable$rank = rank
-    commTable$ranks =
+    commTable$ranks = ##!@todo this is broken.
       lapply(x[commTable$source+1, reqs],
              function(r) as.integer(strsplit(r, ',')[[1]]))
 
@@ -678,7 +678,7 @@ messageDeps = function(x){
       data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
                  size=s$size,
                  src_vertex=s$vertex, dest_vertex=dest_vertex,
-                 src_rank=s$rank, dest_rank=r$rank),
+                 src_rank=s$rank, dest_rank=r$rank, tag=s$tag),
       error = function(e) {
         print(s)
         print(r)
@@ -754,7 +754,7 @@ messageDeps = function(x){
   srDeps = srDeps[sapply(srDeps, nrow) > 0]
   ## this is slower than rbindlist, but doesn't segfault. rbindlist
   ## makes shitty data tables?
-  srDeps = do.call(rbind, srDeps)
+  srDeps = .rbindlist(srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
 
   ## find dest vertices for nonblocking receives
@@ -866,7 +866,8 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
 
     messageEdges =
       messages[, list(size, src=src_vertex, dest=dest_vertex,
-                      rank=dest_rank, s_rank=src_rank, s_uid=o_src, d_uid=dest, weight)]
+                      rank=dest_rank, s_rank=src_rank, s_uid=o_src, d_uid=dest,
+                      weight, tag)]
     rm(messages)
     commonNames = intersect(names(edges), names(messageEdges))
     messageOnlyNames = setdiff(names(messageEdges), commonNames)
@@ -1020,7 +1021,10 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
     list(##runtimes = b2,
          messageEdges = g$messageEdges,
          compEdges = g$compEdges,
+
+         ##!@todo some vertices are missing...
          vertices = g$vertices,
+         
          assignments = assignments,
          comms = comms,
          globals=globals,
