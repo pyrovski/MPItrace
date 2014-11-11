@@ -26,6 +26,8 @@ options(datatable.nomatch=0)
 flagBits = list(omp=1, spin=2, newComm=0x1000) ## bit masks, not indices
 minDuration = .0000001
 
+new_MPI_COMM_WORLD = '-1'
+new_MPI_COMM_NULL = '-2'
 colClasses = c(
   start='numeric',
   duration='numeric',
@@ -168,7 +170,7 @@ activePower =
 idlePower = list(E5_2670 = 19.1)
 
 readGlobal = function(path = '.', filename = "glog.dat"){
-  #source(file.path(path, filename))
+  source(file.path(path, filename))
   e = new.env()
   source(file.path(path, filename), local=e)
   assign('globals', as.list(e), envir=.GlobalEnv)
@@ -271,8 +273,6 @@ readAll = function(path='.'){
   
   x[duration == 0, duration := minDuration]
   
-  assign('new_MPI_COMM_WORLD', '-1', envir=.GlobalEnv)
-  assign('new_MPI_COMM_NULL', '-2', envir=.GlobalEnv)
   x[comm == MPI_COMM_WORLD]$comm = new_MPI_COMM_WORLD
   x[comm == MPI_COMM_NULL]$comm = new_MPI_COMM_NULL
   
@@ -830,7 +830,7 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
 
   ## For the vertex frame, column 1 is the vertex name.
   ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
-  vertices = x[, list(name, rank, hash, vertex)]
+  vertices = x[, list(name, rank, hash, vertex, reqs)]
   vertices$name = paste(vertices$name, vertices$rank)
   setnames(vertices, 'name', 'label')
   vertices$rank = NULL

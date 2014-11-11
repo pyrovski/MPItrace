@@ -415,10 +415,8 @@ reduceConfs = function(x){
   rm(slackVerticesPost)
   
   #!@todo fix?
-  x$slackVertices$hash = as.character(NA)
-  x$slackVertices$label= as.character(NA)
-  ## x$slackVertices$ancestors = as.numeric(NA)
-  ## x$slackVertices$descendants = as.numeric(NA)
+  x$slackVertices[ ,c('hash', 'label', 'reqs') := as.character(NA)]
+  
   setcolorder(x$slackVertices, names(x$vertices))
   cat(x$key, 'Slack time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 

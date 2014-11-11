@@ -567,7 +567,7 @@ writeILPSchedules = function(){
           ## src
           'tag',
           'power', 'OMP_NUM_THREADS', 'cpuFreq')
-      vertexCols = c('vertex', 'label', 'hash')
+      vertexCols = c('vertex', 'label', 'hash', 'reqs')
 
       lapply(resultsFixedLPMerged[[prefix]], function(pl){
         setkey(pl$edges, e_uid)
@@ -596,14 +596,25 @@ writeILPSchedules = function(){
                     if(.N > 1){
 ### we should never have more than one comp edge and one message edge
 ### leaving a vertex
+                      a = .SD[type=='comp']
+                      a[, label := as.character(NA)]
                       rbindlist(list(cbind(.SD[type=='message'], seq=1),
-                                     cbind(.SD[type=='comp'],    seq=2)))
+                                     cbind(a, seq=2)))
                     } else {
                       a=copy(.SD)
-                      a[,c('label', 'hash'):=lapply(list(NA,NA), as.character)]
+                      a[,c('label', 'hash', 'reqs'):=as.character(NA)]
                       cbind(rbindlist(list(.SD,a)), seq=1)
                     },
                     by=vertex][order(s_uid, seq)]
+            ## handle finalize
+            setkey(sched, dest)
+            edges =
+              rbindlist(
+                list(
+                  edges, vertices[, vertexCols,with=F][cbind(
+                                                 sched[dest==2 & rank==r, cols, with=F],
+                                                 d_rank=as.numeric(NA), seq=1)]))
+            
             edges[, c('seq', 'vertex', 's_uid', 'dest') := NULL]
             edges[, c('src', 'dest'):=as.numeric(NA)]
             edges[type == 'message', c('src', 'dest'):=list(r, d_rank)]
@@ -619,9 +630,9 @@ writeILPSchedules = function(){
                            comm='0x0', ##!@todo fix
                            hash,
                            flags=0, ##!@todo fix?
-                           pkg_w=power,
-                           pp0_w=0,
-                           dram_w=0,
+                           #pkg_w=power,
+                           #pp0_w=0,
+                           #dram_w=0,
                            reqs=as.character(NA), ##!@todo fix
                            OMP_NUM_THREADS,
                            cpuFreq
@@ -633,8 +644,9 @@ writeILPSchedules = function(){
             }
             edges[is.na(comm), comm:=0]
             edges[is.na(hash), hash:='0']
-            edges[is.na(pkg_w), pkg_w:=0]
+            #edges[is.na(pkg_w), pkg_w:=0]
             edges[, cpuFreq:=as.integer(cpuFreq)]
+            edges[!is.na(name), duration := 0.0]
             write.table(edges,
                         file=
                         paste('replay', sprintf('%06d', r), prefix,
