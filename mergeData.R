@@ -96,6 +96,10 @@ mergeConfs = function(conf, entries){
   vertices = lapply(result, '[[', 'vertices')
   names(vertices) = lapply(result, '[[', 'date')
   for(i in 1:length(result)) result[[i]]$vertices=NULL
+
+  globals = lapply(result, '[[', 'globals')
+  names(globals) = lapply(result, '[[', 'date')
+  for(i in 1:length(result)) result[[i]]$globals=NULL
   
   ##!@todo match hashes in vertices tables
   
@@ -148,7 +152,8 @@ mergeConfs = function(conf, entries){
        messageEdges=messageEdges,
        compEdges=compEdges,
        collectives=collectives,
-       vertices=vertices)
+       vertices=vertices,
+       globals=globals)
 }
 
 ## combine within confCols combinations. This will combine multiple
@@ -173,6 +178,9 @@ reduceConfs = function(x){
     }
   }
   x$vertices = x$vertices[[1]]
+
+  ##!@todo check for multiple definitions of globals
+  x$globals = x$globals[[1]]
 
   ## all message edges should be identical between runs
   if(any(is.na(x$messageEdges))){

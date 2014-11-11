@@ -168,7 +168,7 @@ activePower =
 idlePower = list(E5_2670 = 19.1)
 
 readGlobal = function(path = '.', filename = "glog.dat"){
-  source(file.path(path, filename))
+  #source(file.path(path, filename))
   e = new.env()
   source(file.path(path, filename), local=e)
   assign('globals', as.list(e), envir=.GlobalEnv)

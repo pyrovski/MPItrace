@@ -533,16 +533,17 @@ writeILPSchedules = function(){
 
       
       ranks = unique(eReduced$reduced$assignments$rank)
-      eRuntimes = new.env()
-      runtimes =
-        load(paste('../', head(eReduced$reduced$assignments, 1)$date,
-                   '/merged.Rsave',sep=''), envir=eRuntimes)
+      ## eRuntimes = new.env()
+      ## runtimes =
+      ##   load(paste('../', head(eReduced$reduced$assignments, 1)$date,
+      ##              '/merged.Rsave',sep=''), envir=eRuntimes)
 
       ##!@todo eReduced and eRuntimes have enough info to recreate the schedule?
       edges_inv = eReduced$reduced$edges_inv
       setkey(edges_inv, e_uid)
       vertices = eReduced$reduced$vertices
       rSched = eReduced$reduced$schedule
+      globals = eReduced$reduced$globals
       rm(eReduced)
 
 ###!@todo this should be done in loadAndMergeILP, but requires
@@ -556,20 +557,92 @@ writeILPSchedules = function(){
         lapply(resultsILPMerged, lapply, accumulateCutStarts, orderedCuts)
       resultsFixedLPMerged =
         lapply(resultsFixedLPMerged, lapply, accumulateCutStarts, orderedCuts)
-      assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
-      assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
-
-### convert message src and dest from vertices to ranks in MPI_COMM_WORLD
+      ##assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
+      ##assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
+      cols =
+        c('src', 's_uid', 'dest', 'type', 'start', 'weight',
+          ## name
+          'size',
+          ## dest
+          ## src
+          'tag',
+          'power', 'OMP_NUM_THREADS', 'cpuFreq')
+      vertexCols = c('vertex', 'label', 'hash')
 
       lapply(resultsFixedLPMerged[[prefix]], function(pl){
         setkey(pl$edges, e_uid)
 
         ## merge sched with reduced edges_inv
         sched = edges_inv[pl$edges]
+        setkey(sched, src)
+        lapply(
+          ranks,
+          function(r){
+            ## rank == dest rank for messages
+            ##!@todo we also need received messages
+            messageEdges = sched[type=='message' & s_rank==r]
+            messageEdges[, d_rank := rank]
+            messageEdges =
+              vertices[, vertexCols, with=F][messageEdges[, c(cols, 'd_rank'), with=F]]
 
-        cat()
+            edges =
+              rbindlist(list(
+                vertices[, vertexCols, with=F][cbind(sched[type=='comp' & rank==r,
+                                         cols, with=F], d_rank=as.numeric(NA))],
+                messageEdges))
+            rm(messageEdges)
+            edges =
+              edges[,
+                    if(.N > 1){
+### we should never have more than one comp edge and one message edge
+### leaving a vertex
+                      rbindlist(list(cbind(.SD[type=='message'], seq=1),
+                                     cbind(.SD[type=='comp'],    seq=2)))
+                    } else {
+                      a=copy(.SD)
+                      a[,c('label', 'hash'):=lapply(list(NA,NA), as.character)]
+                      cbind(rbindlist(list(.SD,a)), seq=1)
+                    },
+                    by=vertex][order(s_uid, seq)]
+            edges[, c('seq', 'vertex', 's_uid', 'dest') := NULL]
+            edges[, c('src', 'dest'):=as.numeric(NA)]
+            edges[type == 'message', c('src', 'dest'):=list(r, d_rank)]
+            edges[, c('d_rank', 'type') := NULL]
+            edges =
+              edges[, list(start,
+                           duration=weight,
+                           name=sapply(strsplit(label, ' '), '[[', 1),
+                           size,
+                           dest,
+                           src,
+                           tag,
+                           comm='0x0', ##!@todo fix
+                           hash,
+                           flags=0, ##!@todo fix?
+                           pkg_w=power,
+                           pp0_w=0,
+                           dram_w=0,
+                           reqs=as.character(NA), ##!@todo fix
+                           OMP_NUM_THREADS,
+                           cpuFreq
+                           )]
+            for(col in setdiff(names(edges), c('reqs', 'name', 'comm', 'hash', 'pkg_w'))){
+              eCol = edges[[col]]
+              eCol[is.na(eCol)] = globals$MPI_UNDEFINED
+              edges[[col]] = eCol
+            }
+            edges[is.na(comm), comm:=0]
+            edges[is.na(hash), hash:='0']
+            edges[is.na(pkg_w), pkg_w:=0]
+            edges[, cpuFreq:=as.integer(cpuFreq)]
+            write.table(edges,
+                        file=
+                        paste('replay', sprintf('%06d', r), prefix,
+                              paste('p', pl$duration$powerLimit[1], 'w', sep=''),
+                              'csv', sep='.'),
+                        quote=F, sep='\t', row.names=F)
+          })
       })
-      rm(e)
       NULL
     })
   result
