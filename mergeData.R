@@ -332,7 +332,6 @@ reduceConfs = function(x){
     messageMinConf = minConf(x$compEdges)[, confCols, with=F]
     x$messageEdges[, confCols := messageMinConf, with=F]
     x$messageEdges[, power := 0]
-    #x$messageEdges[, activeThreads := as.numeric(NA)]
     x$edges = rbind(x$compEdges, x$messageEdges, use.names=T)
   } else
     x$edges = x$compEdges
@@ -341,15 +340,14 @@ reduceConfs = function(x){
   gc()
 
 ###! renumber vertices from 1:n
-  ##x$vertices = x$edges_inv[, list(vertex=union(src, dest))][order(vertex)]
   x$vertices$newVertex = 1:nrow(x$vertices)
   setkey(x$vertices, vertex)
-  setkey(x$edges_inv, src)
-  x$edges_inv = x$edges_inv[x$vertices[, list(vertex, newVertex)]]
-  x$edges_inv = x$edges_inv[, c('src', 'newVertex') := list(newVertex, NULL)]
-  setkey(x$edges_inv, dest)
-  x$edges_inv = x$edges_inv[x$vertices[, list(vertex, newVertex)]]
-  x$edges_inv = x$edges_inv[, c('dest', 'newVertex') := list(newVertex, NULL)]
+  x$edges_inv = data.table::copy(x$edges_inv) ## must have been a faulty rbindlist somewhere
+  for(col in c('src', 'dest', 'o_dest')){
+    setkeyv(x$edges_inv, col)
+    toMatch = unique(Filter(Negate(is.na), x$edges_inv[[col]]))
+    x$edges_inv[x$vertices[J(toMatch), list(vertex, newVertex)], c(col) := list(newVertex)]
+  }
   x$vertices[, c('vertex', 'newVertex') := list(newVertex, NULL)]
   
   ## Get an initial schedule, starting with minimum time per task.
