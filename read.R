@@ -662,14 +662,16 @@ messageDeps = function(x){
   
   f_noSideEffects = function(s, r){
     ## handle Irecvs by forwarding to corresponding MPI_Wait()s
-    if(!is.na(r$fref)){
+    if(!is.na(r$fref)){ ## receive is waited for later
       dest = unlist(r$fref) ## uid
       o_dest = r$uid ## uid
       dest_vertex = as.numeric(NA)
+      o_dest_vertex = r$vertex
     } else {
       dest = r$uid ## uid
       o_dest = dest ## uid
       dest_vertex = r$vertex
+      o_dest_vertex = as.numeric(NA)
     }
     src = s$uid ## uid
     o_src = src ## uid
@@ -678,6 +680,7 @@ messageDeps = function(x){
       data.frame(o_src=o_src, src=src, o_dest=o_dest, dest=dest,
                  size=s$size,
                  src_vertex=s$vertex, dest_vertex=dest_vertex,
+                 o_dest_vertex=o_dest_vertex,
                  src_rank=s$rank, dest_rank=r$rank, tag=s$tag),
       error = function(e) {
         print(s)
@@ -866,7 +869,11 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
 
     messageEdges =
       messages[, list(size, src=src_vertex, dest=dest_vertex,
-                      rank=dest_rank, s_rank=src_rank, s_uid=o_src, d_uid=dest,
+                      o_dest=o_dest_vertex,
+                      rank=dest_rank, s_rank=src_rank,
+                      s_uid=o_src, ##!@todo is this correct for MPI_Send_init/MPI_Start?
+                      d_uid=dest,
+                      o_d_uid=o_dest,
                       weight, tag)]
     rm(messages)
     commonNames = intersect(names(edges), names(messageEdges))

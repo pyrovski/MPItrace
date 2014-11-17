@@ -332,7 +332,7 @@ lpMerge = function(slices, name){
   edges = vertices[edges]
   setnames(vertices, 'src', 'vertex')
 
-  ##!@todo renumber vertices across timeslices
+  ## renumber vertices across timeslices
   edges[, c('src', 'dest') := list(as.character(src), as.character(dest))]
   edges[, ts := as.character(.GRP), by=ts]
   edges[, ts := as.integer(ts)]
@@ -569,7 +569,11 @@ writeILPSchedules = function(){
           'power', 'OMP_NUM_THREADS', 'cpuFreq')
       vertexCols = c('vertex', 'label', 'hash', 'reqs')
 
-      lapply(resultsFixedLPMerged[[prefix]], function(pl){
+      mclapply(resultsFixedLPMerged[[prefix]], function(pl){
+        if(!nrow(pl$edges)){
+          cat("powerLimit", pl$duration$powerLimit, ": no edges\n")
+          return(NULL)
+        }
         setkey(pl$edges, e_uid)
 
         ## merge sched with reduced edges_inv
@@ -615,9 +619,9 @@ writeILPSchedules = function(){
                                                  sched[dest==2 & rank==r, cols, with=F],
                                                  d_rank=as.numeric(NA), seq=1)]))
             
-            edges[, c('seq', 'vertex', 's_uid', 'dest') := NULL]
-            edges[, c('src', 'dest'):=as.numeric(NA)]
-            edges[type == 'message', c('src', 'dest'):=list(r, d_rank)]
+            edges[, c('seq', 'vertex', 's_uid') := NULL]
+            edges[, c('src', 'dest'):=as.integer(NA)]
+            edges[type == 'message', c('src', 'dest') := list(as.integer(r), as.integer(d_rank))]
             edges[, c('d_rank', 'type') := NULL]
             edges =
               edges[, list(start,
@@ -648,10 +652,12 @@ writeILPSchedules = function(){
             edges[, cpuFreq:=as.integer(cpuFreq)]
             edges[!is.na(name), duration := 0.0]
             write.table(edges,
+                        ## C code uses %s.%06d.dat
                         file=
-                        paste('replay', sprintf('%06d', r), prefix,
+                        paste('replay', prefix,
                               paste('p', pl$duration$powerLimit[1], 'w', sep=''),
-                              'csv', sep='.'),
+                              sprintf('%06d', r),
+                              'dat', sep='.'),
                         quote=F, sep='\t', row.names=F)
           })
       })

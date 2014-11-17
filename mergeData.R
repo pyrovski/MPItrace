@@ -751,7 +751,7 @@ go = function(force=F){
 
   f = function(entry){
     startTime = Sys.time()
-    filename = paste('mergedData', gsub('[/.]', '_', entry$key),
+    filename = paste('mergedData', gsub('[/. ]', '_', entry$key),
       'Rsave', sep='.')    
     if(file.exists(filename) & !force){
       cat(entry$key, 'already merged\n')
