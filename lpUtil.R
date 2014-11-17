@@ -560,7 +560,7 @@ writeILPSchedules = function(){
       ##assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
       ##assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
       cols =
-        c('src', 's_uid', 'dest', 'type', 'start', 'weight',
+        c('src', 's_uid', 'd_uid', 'dest', 'type', 'start', 'weight',
           ## name
           'size',
           ## dest
@@ -584,18 +584,35 @@ writeILPSchedules = function(){
           function(r){
             ## rank == dest rank for messages
             ##!@todo we also need received messages
-            messageEdges = sched[type=='message' & s_rank==r]
-            messageEdges[, d_rank := rank]
-            messageEdges =
-              vertices[, vertexCols, with=F][messageEdges[, c(cols, 'd_rank'), with=F]]
+            messageSendEdges = sched[type=='message' & s_rank==r]
+            messageRecvEdges = sched[type=='message' & rank==r]
+
+            messageSendEdges[, d_rank := rank]
+
+            setkey(messageRecvEdges, 'o_dest')
+            messageRecvEdges[, d_rank := rank]
+
+            messageSendEdges = vertices[, vertexCols,
+              with=F][messageSendEdges[, c(cols, 's_rank', 'd_rank'), with=F]]
+            messageRecvEdges = vertices[, vertexCols,
+              with=F][messageRecvEdges[, c(cols, 's_rank', 'd_rank', 'o_dest'), with=F]]
+            messageRecvEdges[, src := NULL]
+###!@todo reduceConfs produces one message edge for each send/recv
+###!pair, but we want a separate row for both send and recv
+            messageEdges = .rbindlist(list(messageRecvEdges, messageSendEdges))
 
             edges =
-              rbindlist(list(
-                vertices[, vertexCols, with=F][cbind(sched[type=='comp' & rank==r,
-                                         cols, with=F], d_rank=as.numeric(NA))],
-                messageEdges))
+              rbindlist(list(vertices[, vertexCols, with=F][
+                                                      cbind(
+                                                        sched[type=='comp' & rank==r,
+                                                              cols, with=F],
+                                                        d_rank=as.integer(NA),
+                                                        s_rank=as.integer(NA)
+                                                        )],
+                             messageEdges))
             rm(messageEdges)
-            edges =
+            
+            edges = 
               edges[,
                     if(.N > 1){
 ### we should never have more than one comp edge and one message edge
@@ -609,7 +626,10 @@ writeILPSchedules = function(){
                       a[,c('label', 'hash', 'reqs'):=as.character(NA)]
                       cbind(rbindlist(list(.SD,a)), seq=1)
                     },
-                    by=vertex][order(s_uid, seq)]
+                    by=vertex][order(start, seq)]
+            ##!@todo fix order
+            warning("edge order is incorrect!\n", immediate.=T)
+
             ## handle finalize
             setkey(sched, dest)
             edges =
@@ -637,7 +657,7 @@ writeILPSchedules = function(){
                            #pkg_w=power,
                            #pp0_w=0,
                            #dram_w=0,
-                           reqs=as.character(NA), ##!@todo fix
+                           reqs,##=as.character(NA), ##!@todo fix
                            OMP_NUM_THREADS,
                            cpuFreq
                            )]
