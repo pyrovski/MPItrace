@@ -758,6 +758,10 @@ go = function(force=F){
 
 ### check for missing configs
     confs = unique(entries[entry, confCols, with=F])
+    if(nrow(confs) == 0){
+      warning('no entries for ', entry, '\n', immediate.=T)
+      return(NULL)
+    }
     setkey(confs)
     missingConfs = confSpace[!confs]
     if(nrow(missingConfs)){
