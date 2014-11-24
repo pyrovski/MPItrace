@@ -990,7 +990,7 @@ shortStats = function(x, thresh=.001){
   cat(shortTimeRatio * 100, '% of time in short tasks\n')
 }
 
-run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
+run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F, ...){
   startTime = Sys.time()
   cat('Reading ', path,' (', getwd(), ')\n')
   a = readAll(path)
@@ -999,7 +999,7 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   assignments = a$assignments
   uidsByReq = a$uidsByReq
   newComms = a$newComms
-  b = preDeps(a$runtimes, uidsByReq, newComms, path=path)
+  b = preDeps(a$runtimes, uidsByReq, newComms, path=path, ...)
   cat('preDeps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   rm(a)
