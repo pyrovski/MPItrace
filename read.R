@@ -22,6 +22,9 @@ debug=T
 #options(mc.cores=16)
 options(datatable.nomatch=0)
 
+numericListCols = c('fref', 'bref')
+listCols = c('reqs', numericListCols)
+
 #!@todo get this from a file
 flagBits = list(omp=1, spin=2, newComm=0x1000) ## bit masks, not indices
 minDuration = .0000001
@@ -596,8 +599,13 @@ deps = function(x){
 
   if(debug)
     cat('Collectives\n')
-  collectives = intersect(unique(x$name), setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
+  collectives =
+    intersect(unique(x$name),
+              setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
 
+  ##!@todo newer R data.table does not support list columns in keyed tables
+  for(col in listCols)
+    x[[col]] = as.vector(sapply(x[[col]], paste, collapse=','))
   setkey(x, name, comm, rank)
   for(a_coll in collectives){
     instances = which(x$name == a_coll)
@@ -687,7 +695,7 @@ messageDeps = function(x){
         print(r)
         stop('error in f_noSideEffects: ')
       }
-      )
+    )
     return(result)
   }
 
@@ -697,13 +705,22 @@ messageDeps = function(x){
     ## ignore canceled requests
     matching = matching[is.na(fref) | !fref %in% canceledUIDs]
     ## ignore requests not waited for
-    matching = matching[!name %in% c(MPI_Req_sources, MPI_Req_inits) | !is.na(fref)]
+    matching = matching[!name %in% c(MPI_Req_sources, MPI_Req_inits) |
+                          !is.na(fref)]
     if(nrow(matching) < 1){
       cat('Message ID', mid, 'of', nrow(mids), ':', 'no messages\n')
       return(data.frame())
     }
 
     setkey(matching, uid)
+    for(col in listCols)
+      matching[[col]] = lapply(matching[[col]], function(e) strsplit(e, ',')[[1]])
+    for(col in numericListCols)
+      matching[[col]] = lapply(matching[[col]], function(l){
+        l[l == 'NA'] = as.numeric(NA)
+        sapply(l, as.numeric)
+      })
+    
     sends = matching[name %in% MPI_Sends]
     recvs = matching[name %in% MPI_Recvs]
     
@@ -760,12 +777,15 @@ messageDeps = function(x){
   srDeps = .rbindlist(srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
 
+  for(col in listCols)
+    x[[col]] = as.vector(sapply(x[[col]], paste, collapse=','))
+
   ## find dest vertices for nonblocking receives
   setkey(x, uid)
   missingVertices = srDeps[is.na(dest_vertex), which=T]
   if(length(missingVertices)){
     dest_uids = srDeps[missingVertices, dest]
-    srDeps[missingVertices, dest_vertex := x[J(dest_uids), vertex]]
+    srDeps[missingVertices, dest_vertex := x[J(dest_uids)]$vertex]
   }
   
   if(debug)
@@ -792,7 +812,7 @@ messageDeps = function(x){
              lapply(multDests,
                     function(d) srDeps[J(d)]$src), SIMPLIFY=F)
   }
-  x$deps = deps
+  x$deps = sapply(deps, paste, collapse=',')
   rm(deps)
     
   if(debug)
@@ -857,11 +877,15 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
   edges = compEdges[,list(src,dest,weight,s_uid,d_uid)]
   if(!is.null(messages) && nrow(messages)){
     setkey(messages, src_rank)
-    messages$src_host = assignments[messages, hostname]
-
+    
+    messages[assignments, src_host := hostname]
+    
     setkey(messages, dest_rank)
-    messages$dest_host = assignments[messages, hostname]
+    messages[assignments, dest_host := hostname]
 
+    if(!uhost %in% names(selfLatency))
+      stop('missing selfLatency function for ',uhost,'\n')
+    
     messages[src_host == dest_host,
              weight := selfLatency[[uhost]](size), by=list(o_src, o_dest)]
     messages[src_host != dest_host,
