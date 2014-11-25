@@ -746,4 +746,3 @@ plotPerfPower = function(edges, name='Dummy Region', toPDF=T){
   if(toPDF)
     dev.off()
 }
-
