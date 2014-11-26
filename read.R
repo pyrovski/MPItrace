@@ -604,7 +604,7 @@ deps = function(x){
               setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
 
   ##!@todo newer R data.table does not support list columns in keyed tables
-  for(col in listCols)
+  for(col in intersect(listCols, names(x)))
     x[[col]] = as.vector(sapply(x[[col]], paste, collapse=','))
   setkey(x, name, comm, rank)
   for(a_coll in collectives){
