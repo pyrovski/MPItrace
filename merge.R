@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 #msub -l nodes=1
 
-options(mc.cores=16)
+options(mc.cores=1)
 args = commandArgs(trailingOnly=T)
 if(length(args) < 1){
   stop('expected path argument')

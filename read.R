@@ -604,7 +604,7 @@ deps = function(x){
               setdiff(MPI_collectives, c('MPI_Init','MPI_Finalize')))
 
   ##!@todo newer R data.table does not support list columns in keyed tables
-  for(col in listCols)
+  for(col in intersect(listCols, names(x)))
     x[[col]] = as.vector(sapply(x[[col]], paste, collapse=','))
   setkey(x, name, comm, rank)
   for(a_coll in collectives){
@@ -1014,7 +1014,7 @@ shortStats = function(x, thresh=.001){
   cat(shortTimeRatio * 100, '% of time in short tasks\n')
 }
 
-run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
+run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F, ...){
   startTime = Sys.time()
   cat('Reading ', path,' (', getwd(), ')\n')
   a = readAll(path)
@@ -1023,7 +1023,7 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F){
   assignments = a$assignments
   uidsByReq = a$uidsByReq
   newComms = a$newComms
-  b = preDeps(a$runtimes, uidsByReq, newComms, path=path)
+  b = preDeps(a$runtimes, uidsByReq, newComms, path=path, ...)
   cat('preDeps time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
   startTime = Sys.time()
   rm(a)

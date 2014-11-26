@@ -344,7 +344,7 @@ reduceConfs = function(x){
   x$vertices$newVertex = 1:nrow(x$vertices)
   setkey(x$vertices, vertex)
   x$edges_inv = data.table::copy(x$edges_inv) ## must have been a faulty rbindlist somewhere
-  for(col in c('src', 'dest', 'o_dest')){
+  for(col in intersect(c('src', 'dest', 'o_dest'), names(x$edges_inv))){
     setkeyv(x$edges_inv, col)
     toMatch = unique(Filter(Negate(is.na), x$edges_inv[[col]]))
     x$edges_inv[x$vertices[J(toMatch), list(vertex, newVertex)], c(col) := list(newVertex)]
