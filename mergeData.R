@@ -307,7 +307,8 @@ reduceConfs = function(x){
   ## plot perf vs power for one edge
   setkey(x$compEdges, e_uid)
   setkey(x$edges_inv, e_uid)
-  threadEdges = unique(x$compEdges[OMP_NUM_THREADS == max(OMP_NUM_THREADS), e_uid])
+  maxThreads = max(x$compEdges$OMP_NUM_THREADS, na.rm=T)
+  threadEdges = unique(x$compEdges[OMP_NUM_THREADS == maxThreads, e_uid])
   minWeightEdges = x$compEdges[J(threadEdges)][x$edges_inv[,list(e_uid, rank)]][,
     list(minWeight=min(weight), rank),by=e_uid][minWeight > .02][,
                                         head(.SD, 4),by=rank][, e_uid]
@@ -758,6 +759,10 @@ go = function(force=F){
 
 ### check for missing configs
     confs = unique(entries[entry, confCols, with=F])
+    if(nrow(confs) == 0){
+      warning('no entries for ', entry, '\n', immediate.=T)
+      return(NULL)
+    }
     setkey(confs)
     missingConfs = confSpace[!confs]
     if(nrow(missingConfs)){
