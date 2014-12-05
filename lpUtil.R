@@ -580,6 +580,8 @@ writeILPSchedules = function(){
         sched = edges_inv[pl$edges]
         cols = intersect(cols, names(sched))
         setkey(sched, src)
+        schedDest = data.table::copy(sched)
+        setkey(schedDest, dest)
         lapply(
           ranks,
           function(r){
@@ -642,12 +644,12 @@ writeILPSchedules = function(){
             edges = edges[order(mseq, seq)]
             
             ## handle finalize
-            setkey(sched, dest)
+            
             edges =
               .rbindlist(
                 list(
                   edges, vertices[, vertexCols,with=F][cbind(
-                                                 sched[dest==2 & rank==r, cols, with=F],
+                                                 schedDest[dest==2 & rank==r, cols, with=F],
                                                  d_rank=as.integer(NA), s_rank=as.integer(NA), mseq=max(edges$mseq) + 1, seq=1)]))
             
             edges[, c('seq', 'vertex', 's_uid') := NULL]
