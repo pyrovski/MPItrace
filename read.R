@@ -25,8 +25,9 @@ options(datatable.nomatch=0)
 numericListCols = c('fref', 'bref')
 listCols = c('reqs', numericListCols)
 
-#!@todo get this from a file
-flagBits = list(omp=1, spin=2, newComm=0x1000) ## bit masks, not indices
+##!@todo get this from a file
+## bit masks, not indices
+flagBits = list(omp=1, spin=2, newComm=0x1000, threads=0xff0)
 minDuration = .0000001
 
 new_MPI_COMM_WORLD = '-1'
