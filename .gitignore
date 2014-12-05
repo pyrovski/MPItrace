@@ -45,3 +45,5 @@ localConfig
 errlog*
 rapl_clamp*
 *.log
+log
+errLog

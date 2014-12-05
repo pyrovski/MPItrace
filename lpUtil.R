@@ -578,42 +578,47 @@ writeILPSchedules = function(){
 
         ## merge sched with reduced edges_inv
         sched = edges_inv[pl$edges]
+        cols = intersect(cols, names(sched))
         setkey(sched, src)
+        schedDest = data.table::copy(sched)
+        setkey(schedDest, dest)
         lapply(
           ranks,
           function(r){
             ## rank == dest rank for messages
-            ##!@todo we also need received messages
-            messageSendEdges = sched[type=='message' & s_rank==r]
-            messageRecvEdges = sched[type=='message' & rank==r]
+            compEdges = 
+              vertices[, vertexCols, with=F][cbind(
+                                       sched[type=='comp' & rank==r,
+                                             cols, with=F],
+                                       d_rank=as.integer(NA),
+                                       s_rank=as.integer(NA),
+                                       mseq=as.numeric(NA))]
+            if(nrow(sched[type == 'message'])){
+              messageSendEdges = sched[type=='message' & s_rank==r]
+              messageRecvEdges = sched[type=='message' & rank==r]
 
-            messageSendEdges[, d_rank := rank]
-
-            setkey(messageRecvEdges, 'o_dest')
-            messageRecvEdges[, d_rank := rank]
-
-            messageSendEdges = vertices[, vertexCols,
-              with=F][messageSendEdges[, c(cols, 's_rank', 'd_rank'), with=F]]
-            messageRecvEdges = vertices[, vertexCols,
-              with=F][messageRecvEdges[, c(cols, 's_rank', 'd_rank', 'o_dest', 'o_d_uid'), with=F]]
-            messageRecvEdges[, src := NULL]
+              messageSendEdges[, d_rank := rank]
+              
+              setkey(messageRecvEdges, 'o_dest')
+              messageRecvEdges[, d_rank := rank]
+              
+              messageSendEdges = vertices[, vertexCols,
+                with=F][messageSendEdges[, c(cols, 's_rank', 'd_rank'), with=F]]
+              messageRecvEdges = vertices[, vertexCols,
+                with=F][messageRecvEdges[, c(cols, 's_rank', 'd_rank', 'o_dest', 'o_d_uid'), with=F]]
+              messageRecvEdges[, src := NULL]
 ### reduceConfs produces one message edge for each send/recv
 ### pair, but we want a separate row for both send and recv
-            messageEdges = .rbindlist(list(messageRecvEdges, cbind(messageSendEdges, o_d_uid=as.numeric(NA))))
-            messageEdges[,mseq:=max(s_uid, o_d_uid, na.rm=T),by=vertex]
-            messageEdges[, o_d_uid := NULL]
-            
-            edges =
-              .rbindlist(list(vertices[, vertexCols, with=F][
-                                                       cbind(
-                                                         sched[type=='comp' & rank==r,
-                                                               cols, with=F],
-                                                         d_rank=as.integer(NA),
-                                                         s_rank=as.integer(NA),
-                                                         mseq=as.numeric(NA)
-                                                         )],
-                              messageEdges))
-            rm(messageEdges)
+              messageEdges = .rbindlist(list(messageRecvEdges, cbind(messageSendEdges, o_d_uid=as.numeric(NA))))
+              messageEdges[,mseq:=max(s_uid, o_d_uid, na.rm=T),by=vertex]
+              messageEdges[, o_d_uid := NULL]
+              
+              edges =
+                .rbindlist(list(compEdges,
+                                messageEdges))
+              rm(messageEdges)
+            } else
+              edges = compEdges
             edges[, mseq:=max(mseq, s_uid, na.rm=T), by=list(vertex,type)]
             
             edges = 
@@ -639,18 +644,21 @@ writeILPSchedules = function(){
             edges = edges[order(mseq, seq)]
             
             ## handle finalize
-            setkey(sched, dest)
+            
             edges =
               .rbindlist(
                 list(
                   edges, vertices[, vertexCols,with=F][cbind(
-                                                 sched[dest==2 & rank==r, cols, with=F],
+                                                 schedDest[dest==2 & rank==r, cols, with=F],
                                                  d_rank=as.integer(NA), s_rank=as.integer(NA), mseq=max(edges$mseq) + 1, seq=1)]))
             
             edges[, c('seq', 'vertex', 's_uid') := NULL]
             edges[, c('src', 'dest'):=as.integer(NA)]
             edges[type == 'message', c('src', 'dest') := list(as.integer(s_rank), as.integer(d_rank))]
             edges[, c('d_rank', 'type') := NULL]
+            if(!'size' %in% names(edges)){
+              edges[, c('size', 'tag', 'comm') := as.numeric(NA)]
+            }
             edges =
               edges[, list(start,
                            duration=weight,
