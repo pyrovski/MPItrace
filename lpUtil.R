@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 require('igraph')
 require('rjson')
 require('data.table')
@@ -492,12 +494,6 @@ loadAndMergeILP = function(...){
   NULL
 }
 
-if(!interactive()){
-##  loadAndMergeLP()
-  loadAndMergeILP()
-  writeILPSchedules()
-}
-
 accumulateCutStarts = function(x, orderedCuts){
   setkey(x$duration, cut)
   x$duration = x$duration[J(orderedCuts)]
@@ -702,6 +698,13 @@ writeILPSchedules = function(){
     })
   result
 }
+
+if(!interactive()){
+##  loadAndMergeLP()
+  loadAndMergeILP()
+  writeILPSchedules()
+}
+
 
 ## match one-config tasks and two-config tasks, including schedule
 ## creation for one-config tasks.
