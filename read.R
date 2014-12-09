@@ -756,6 +756,9 @@ messageDeps = function(x){
           'messages\n')
     ## if a receive has a request, the send dependency leads to the
     ## matching wait, test, or free
+###!@todo this is getting caught in SMG2000. I think it's a bug in the
+###!application, but it could be a bug in the analysis. I should check
+###!it with MUST or VampirTrace.
     if(nrow(sends) != nrow(recvs)){
       errMsg = paste('mismatched send-receive:\n',
         paste(names(mids), collapse='\t'), '\n',
