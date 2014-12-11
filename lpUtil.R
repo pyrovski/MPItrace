@@ -565,6 +565,21 @@ accumulateCutStarts = function(x, orderedCuts){
 
     ## merge sched with reduced edges_inv
     sched = edges_inv[pl$edges]
+
+    .writePowerTime = function(s, label){
+      write.table(powerTime(s),
+                  file=
+                  paste('powerTime',
+                        prefix, label, paste('p', pl$duration$powerLimit[1], 'w', sep=''),
+                        'dat', sep='.'),
+                  quote=F, sep='\t', row.names=F)
+    }
+    .writePowerTime(sched, 'all')
+    lapply(ranks, function(r)
+           .writePowerTime(sched[rank == r], label=sprintf('%06d', r)))
+
+    ##!@todo plot per-rank power vs time, compare power allocation nonuniformity
+    
     cols = intersect(cols, names(sched))
     setkey(sched, src)
     schedDest = data.table::copy(sched)
