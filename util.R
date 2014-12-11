@@ -46,7 +46,10 @@ powerTime = function(edges, vertices){
     ##[order(start)]
     o = order(edges[,start])
     edges = edges[o]
-    maxStart = max(vertices[, start])
+    if('start' %in% names(edges))
+      maxStart = max(edges[, start+weight])
+    else
+      maxStart = max(vertices[, start])
     times = edges[, start]
     
     powers = data.table(start=times, power=edges[, power])
