@@ -672,7 +672,7 @@ messageDeps = function(x){
   f_noSideEffects = function(s, r){
     ## handle Irecvs by forwarding to corresponding MPI_Wait()s
     if(!is.na(r$fref)){ ## receive is waited for later
-      dest = unlist(r$fref) ## uid
+      dest = as.numeric(unlist(r$fref)) ## uid
       o_dest = r$uid ## uid
       dest_vertex = as.numeric(NA)
       o_dest_vertex = r$vertex
@@ -731,9 +731,11 @@ messageDeps = function(x){
         sendStarts = xStarts[J(sendInit_frefs), nonMessageCols, with=F]
 ###!@ todo all messageCols should be identical, so something like this
 ###!should work: .rbindlist(rep.int(mids[mid], nrow(sendStarts))))
+
+        ##!@todo separate stringified lists?
         sendStarts =
           cbind(sendStarts, 
-                matching[J(unlist(sendStarts[, bref])), messageCols, with=F])
+                matching[J(as.numeric(unlist(sendStarts[, bref]))), messageCols, with=F])
         setcolorder(sendStarts, names(x))
         sends = rbind(sends, sendStarts)
         rm(sendStarts, sendInit_frefs)
@@ -741,8 +743,9 @@ messageDeps = function(x){
       recvInit_frefs = unlist(matching[name %in% MPI_Recv_inits, fref])
       if(length(recvInit_frefs)){
         recvStarts = xStarts[J(recvInit_frefs), nonMessageCols, with=F]
+        ##!@todo separate stringified lists?
         recvStarts =
-          cbind(recvStarts, matching[J(unlist(recvStarts[, bref])), messageCols, with=F])
+          cbind(recvStarts, matching[J(as.numeric(unlist(recvStarts[, bref]))), messageCols, with=F])
         setcolorder(recvStarts, names(x))
         recvs = rbind(recvs, recvStarts)
         rm(recvStarts, recvInit_frefs)
@@ -766,20 +769,31 @@ messageDeps = function(x){
       stop(errMsg)
     }
 
-    result =
-      lapply(1:nrow(sends), function(row)
-             f_noSideEffects(sends[row], recvs[row]))
-    result = .rbindlist(result)
+    if(nrow(sends) & nrow(recvs)){
+      result =
+        lapply(1:nrow(sends), function(row)
+               f_noSideEffects(sends[row], recvs[row]))
+      result = .rbindlist(result)
+    } else {
+      ##! this occasionally indicates an error, but some applications
+      ##! set up persistent requests with MPI_Send_init() etc. and
+      ##! then don't use them.
+      warning("no sends and receives for mid ", mid, '\n', immediate.=T)
+      result = NULL
+    }
     return(result)
   }
 
   ## srDeps holds source and destination UIDs for matching messages
   srDeps = mclapply(1:nrow(mids), f)
-  srDeps = srDeps[sapply(srDeps, nrow) > 0]
+  srDeps = srDeps[sapply(srDeps, function(x) !is.null(x) && (nrow(x) > 0))]
   ## this is slower than rbindlist, but doesn't segfault. rbindlist
   ## makes shitty data tables?
   srDeps = .rbindlist(srDeps)
   srDeps = as.data.table(lapply(srDeps, unlist))
+  if(class(srDeps$dest) == 'factor'){
+    stop("factor column!\n")
+  }
 
   for(col in listCols)
     x[[col]] = as.vector(sapply(x[[col]], paste, collapse=','))

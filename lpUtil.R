@@ -513,6 +513,200 @@ accumulateCutStarts = function(x, orderedCuts){
   x
 }
 
+.writeILP_prefix = function(prefix){
+  origPrefix = sub('_fixedLP', '', prefix)
+  eReduced = new.env()
+  load(paste('../mergedData', origPrefix, 'Rsave', sep='.'), envir=eReduced)
+
+  
+  ranks = unique(eReduced$reduced$assignments$rank)
+  ## eRuntimes = new.env()
+  ## runtimes =
+  ##   load(paste('../', head(eReduced$reduced$assignments, 1)$date,
+  ##              '/merged.Rsave',sep=''), envir=eRuntimes)
+
+  ##!@todo eReduced and eRuntimes have enough info to recreate the schedule?
+  edges_inv = eReduced$reduced$edges_inv
+  setkey(edges_inv, e_uid)
+  vertices = eReduced$reduced$vertices
+  rSched = eReduced$reduced$schedule
+  globals = eReduced$reduced$globals
+  rm(eReduced)
+
+###!@todo this should be done in loadAndMergeILP, but requires
+###!knowledge of vertex order that lives in merged_.Rsave.
+  setkey(vertices, vertex)
+  orderedCuts =
+    vertices[J(
+      resultsFixedLPMerged[[prefix]][[1]]$duration$cut
+      )][order(start), vertex]
+  resultsILPMerged =
+    lapply(resultsILPMerged, lapply, accumulateCutStarts, orderedCuts)
+  resultsFixedLPMerged =
+    lapply(resultsFixedLPMerged, lapply, accumulateCutStarts, orderedCuts)
+  ##assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
+  ##assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
+  cols =
+    c('src', 's_uid', 'd_uid', 'dest', 'type', 'start', 'weight',
+      ## name
+      'size',
+      ## dest
+      ## src
+      'tag',
+      'power', 'OMP_NUM_THREADS', 'cpuFreq')
+  vertexCols = c('vertex', 'label', 'hash', 'reqs')
+
+  .writeILP_prefix_powerLimit = function(pl){
+    if(!nrow(pl$edges)){
+      cat("powerLimit", pl$duration$powerLimit, ": no edges\n")
+      return(NULL)
+    }
+    setkey(pl$edges, e_uid)
+
+    ## merge sched with reduced edges_inv
+    sched = edges_inv[pl$edges]
+
+    .writePowerTime = function(s, label){
+      write.table(powerTime(s),
+                  file=
+                  paste('powerTime',
+                        prefix, label, paste('p', pl$duration$powerLimit[1], 'w', sep=''),
+                        'dat', sep='.'),
+                  quote=F, sep='\t', row.names=F)
+    }
+    .writePowerTime(sched, 'all')
+    lapply(ranks, function(r)
+           .writePowerTime(sched[rank == r], label=sprintf('%06d', r)))
+
+    ##!@todo plot per-rank power vs time, compare power allocation nonuniformity
+    
+    cols = intersect(cols, names(sched))
+    setkey(sched, src)
+    schedDest = data.table::copy(sched)
+    setkey(schedDest, dest)
+
+    .writeILP_prefix_powerLimit_rank = function(r){
+      ## rank == dest rank for messages
+      compEdges = 
+        vertices[, vertexCols, with=F][cbind(
+                                 sched[type=='comp' & rank==r,
+                                       cols, with=F],
+                                 d_rank=as.integer(NA),
+                                 s_rank=as.integer(NA),
+                                 mseq=as.numeric(NA))]
+      if(nrow(sched[type == 'message'])){
+        messageSendEdges = sched[type=='message' & s_rank==r]
+        messageRecvEdges = sched[type=='message' & rank==r]
+
+        messageSendEdges[, d_rank := rank]
+        
+        setkey(messageRecvEdges, 'o_dest')
+        messageRecvEdges[, d_rank := rank]
+        
+        messageSendEdges = vertices[, vertexCols,
+          with=F][messageSendEdges[, c(cols, 's_rank', 'd_rank'), with=F]]
+        messageRecvEdges = vertices[, vertexCols,
+          with=F][messageRecvEdges[, c(cols, 's_rank', 'd_rank', 'o_dest', 'o_d_uid'), with=F]]
+        messageRecvEdges[, src := NULL]
+### reduceConfs produces one message edge for each send/recv
+### pair, but we want a separate row for both send and recv
+        messageEdges = .rbindlist(list(messageRecvEdges, cbind(messageSendEdges, o_d_uid=as.numeric(NA))))
+        messageEdges[,mseq:=max(s_uid, o_d_uid, na.rm=T),by=vertex]
+        messageEdges[, o_d_uid := NULL]
+        
+        edges =
+          .rbindlist(list(compEdges,
+                          messageEdges))
+        rm(messageEdges)
+      } else
+        edges = compEdges
+      edges[, mseq:=max(mseq, s_uid, na.rm=T), by=list(vertex,type)]
+      
+      edges = 
+        edges[,
+              if(.N > 1){
+### we should never have more than one comp edge and one message edge
+### leaving a vertex
+                a = .SD[type=='comp']
+                a[, label := as.character(NA)]
+                a =
+                  rbindlist(list(cbind(.SD[type=='message'], seq=1),
+                                 cbind(a, seq=2)))
+### hack to handle start times from sender in recv edges.
+                a[, start := min(start)]
+              } else {
+                a=copy(.SD)
+                a[,c('label', 'hash', 'reqs'):=as.character(NA)]
+                cbind(rbindlist(list(.SD,a)), seq=1)
+              },
+              by=vertex]
+
+      edges[,mseq:=min(mseq),by=list(vertex)]
+      edges = edges[order(mseq, seq)]
+      
+      ## handle finalize
+      
+      edges =
+        .rbindlist(
+          list(
+            edges, vertices[, vertexCols,with=F][cbind(
+                                           schedDest[dest==2 & rank==r, cols, with=F],
+                                           d_rank=as.integer(NA), s_rank=as.integer(NA), mseq=max(edges$mseq) + 1, seq=1)]))
+      
+      edges[, c('seq', 'vertex', 's_uid') := NULL]
+      edges[, c('src', 'dest'):=as.integer(NA)]
+      edges[type == 'message', c('src', 'dest') := list(as.integer(s_rank), as.integer(d_rank))]
+      edges[, c('d_rank', 'type') := NULL]
+      if(!'size' %in% names(edges)){
+        edges[, c('size', 'tag', 'comm') := as.numeric(NA)]
+      }
+      edges =
+        edges[, list(start,
+                     duration=weight,
+                     name=sapply(strsplit(label, ' '), '[[', 1),
+                     size,
+                     dest,
+                     src,
+                     tag,
+                     comm='0x0', ##!@todo fix
+                     hash,
+                     flags=0, ##!@todo fix?
+                                        #pkg_w=power,
+                                        #pp0_w=0,
+                                        #dram_w=0,
+                     reqs,##=as.character(NA), ##!@todo fix
+                     OMP_NUM_THREADS,
+                     cpuFreq
+                     )]
+      for(col in setdiff(names(edges), c('reqs', 'name', 'comm', 'hash', 'pkg_w'))){
+        eCol = edges[[col]]
+        eCol[is.na(eCol)] = globals$MPI_UNDEFINED
+        edges[[col]] = eCol
+      }
+      edges[is.na(comm), comm:=0]
+      edges[is.na(hash), hash:='0']
+                                        #edges[is.na(pkg_w), pkg_w:=0]
+      edges[, cpuFreq:=as.integer(cpuFreq)]
+      edges[!is.na(name), duration := 0.0]
+      edges[, reqs:=sapply(reqs, paste, collapse=',')]
+      write.table(edges,
+                  ## C code uses %s.%06d.dat
+                  file=
+                  paste('replay', prefix,
+                        paste('p', pl$duration$powerLimit[1], 'w', sep=''),
+                        sprintf('%06d', r),
+                        'dat', sep='.'),
+                  quote=F, sep='\t', row.names=F)
+    }
+
+
+    lapply(ranks, .writeILP_prefix_powerLimit_rank)
+  }
+
+  mclapply(resultsFixedLPMerged[[prefix]], .writeILP_prefix_powerLimit)
+  NULL
+}
+
 ## For each command, for each power limit, write a configuration
 ## schedule. This involves matching scheduled edges with edges from
 ## the original schedule, verifying that all edges were scheduled in
@@ -521,182 +715,7 @@ accumulateCutStarts = function(x, orderedCuts){
 ## require request IDs and communicator IDs. Perhaps it would be
 ## easier to load an existing replay schedule and add config options.
 writeILPSchedules = function(){
-  result =
-    nnapply(names(resultsFixedLPMerged), function(prefix){
-      origPrefix = sub('_fixedLP', '', prefix)
-      eReduced = new.env()
-      load(paste('../mergedData', origPrefix, 'Rsave', sep='.'), envir=eReduced)
-
-      
-      ranks = unique(eReduced$reduced$assignments$rank)
-      ## eRuntimes = new.env()
-      ## runtimes =
-      ##   load(paste('../', head(eReduced$reduced$assignments, 1)$date,
-      ##              '/merged.Rsave',sep=''), envir=eRuntimes)
-
-      ##!@todo eReduced and eRuntimes have enough info to recreate the schedule?
-      edges_inv = eReduced$reduced$edges_inv
-      setkey(edges_inv, e_uid)
-      vertices = eReduced$reduced$vertices
-      rSched = eReduced$reduced$schedule
-      globals = eReduced$reduced$globals
-      rm(eReduced)
-
-###!@todo this should be done in loadAndMergeILP, but requires
-###!knowledge of vertex order that lives in merged_.Rsave.
-      setkey(vertices, vertex)
-      orderedCuts =
-        vertices[J(
-          resultsFixedLPMerged[[prefix]][[1]]$duration$cut
-          )][order(start), vertex]
-      resultsILPMerged =
-        lapply(resultsILPMerged, lapply, accumulateCutStarts, orderedCuts)
-      resultsFixedLPMerged =
-        lapply(resultsFixedLPMerged, lapply, accumulateCutStarts, orderedCuts)
-      ##assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
-      ##assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
-      cols =
-        c('src', 's_uid', 'd_uid', 'dest', 'type', 'start', 'weight',
-          ## name
-          'size',
-          ## dest
-          ## src
-          'tag',
-          'power', 'OMP_NUM_THREADS', 'cpuFreq')
-      vertexCols = c('vertex', 'label', 'hash', 'reqs')
-
-      mclapply(resultsFixedLPMerged[[prefix]], function(pl){
-        if(!nrow(pl$edges)){
-          cat("powerLimit", pl$duration$powerLimit, ": no edges\n")
-          return(NULL)
-        }
-        setkey(pl$edges, e_uid)
-
-        ## merge sched with reduced edges_inv
-        sched = edges_inv[pl$edges]
-        cols = intersect(cols, names(sched))
-        setkey(sched, src)
-        schedDest = data.table::copy(sched)
-        setkey(schedDest, dest)
-        lapply(
-          ranks,
-          function(r){
-            ## rank == dest rank for messages
-            compEdges = 
-              vertices[, vertexCols, with=F][cbind(
-                                       sched[type=='comp' & rank==r,
-                                             cols, with=F],
-                                       d_rank=as.integer(NA),
-                                       s_rank=as.integer(NA),
-                                       mseq=as.numeric(NA))]
-            if(nrow(sched[type == 'message'])){
-              messageSendEdges = sched[type=='message' & s_rank==r]
-              messageRecvEdges = sched[type=='message' & rank==r]
-
-              messageSendEdges[, d_rank := rank]
-              
-              setkey(messageRecvEdges, 'o_dest')
-              messageRecvEdges[, d_rank := rank]
-              
-              messageSendEdges = vertices[, vertexCols,
-                with=F][messageSendEdges[, c(cols, 's_rank', 'd_rank'), with=F]]
-              messageRecvEdges = vertices[, vertexCols,
-                with=F][messageRecvEdges[, c(cols, 's_rank', 'd_rank', 'o_dest', 'o_d_uid'), with=F]]
-              messageRecvEdges[, src := NULL]
-### reduceConfs produces one message edge for each send/recv
-### pair, but we want a separate row for both send and recv
-              messageEdges = .rbindlist(list(messageRecvEdges, cbind(messageSendEdges, o_d_uid=as.numeric(NA))))
-              messageEdges[,mseq:=max(s_uid, o_d_uid, na.rm=T),by=vertex]
-              messageEdges[, o_d_uid := NULL]
-              
-              edges =
-                .rbindlist(list(compEdges,
-                                messageEdges))
-              rm(messageEdges)
-            } else
-              edges = compEdges
-            edges[, mseq:=max(mseq, s_uid, na.rm=T), by=list(vertex,type)]
-            
-            edges = 
-              edges[,
-                    if(.N > 1){
-### we should never have more than one comp edge and one message edge
-### leaving a vertex
-                      a = .SD[type=='comp']
-                      a[, label := as.character(NA)]
-                      a =
-                        rbindlist(list(cbind(.SD[type=='message'], seq=1),
-                                       cbind(a, seq=2)))
-### hack to handle start times from sender in recv edges.
-                      a[, start := min(start)]
-                    } else {
-                      a=copy(.SD)
-                      a[,c('label', 'hash', 'reqs'):=as.character(NA)]
-                      cbind(rbindlist(list(.SD,a)), seq=1)
-                    },
-                    by=vertex]
-
-            edges[,mseq:=min(mseq),by=list(vertex)]
-            edges = edges[order(mseq, seq)]
-            
-            ## handle finalize
-            
-            edges =
-              .rbindlist(
-                list(
-                  edges, vertices[, vertexCols,with=F][cbind(
-                                                 schedDest[dest==2 & rank==r, cols, with=F],
-                                                 d_rank=as.integer(NA), s_rank=as.integer(NA), mseq=max(edges$mseq) + 1, seq=1)]))
-            
-            edges[, c('seq', 'vertex', 's_uid') := NULL]
-            edges[, c('src', 'dest'):=as.integer(NA)]
-            edges[type == 'message', c('src', 'dest') := list(as.integer(s_rank), as.integer(d_rank))]
-            edges[, c('d_rank', 'type') := NULL]
-            if(!'size' %in% names(edges)){
-              edges[, c('size', 'tag', 'comm') := as.numeric(NA)]
-            }
-            edges =
-              edges[, list(start,
-                           duration=weight,
-                           name=sapply(strsplit(label, ' '), '[[', 1),
-                           size,
-                           dest,
-                           src,
-                           tag,
-                           comm='0x0', ##!@todo fix
-                           hash,
-                           flags=0, ##!@todo fix?
-                           #pkg_w=power,
-                           #pp0_w=0,
-                           #dram_w=0,
-                           reqs,##=as.character(NA), ##!@todo fix
-                           OMP_NUM_THREADS,
-                           cpuFreq
-                           )]
-            for(col in setdiff(names(edges), c('reqs', 'name', 'comm', 'hash', 'pkg_w'))){
-              eCol = edges[[col]]
-              eCol[is.na(eCol)] = globals$MPI_UNDEFINED
-              edges[[col]] = eCol
-            }
-            edges[is.na(comm), comm:=0]
-            edges[is.na(hash), hash:='0']
-            #edges[is.na(pkg_w), pkg_w:=0]
-            edges[, cpuFreq:=as.integer(cpuFreq)]
-            edges[!is.na(name), duration := 0.0]
-            edges[, reqs:=sapply(reqs, paste, collapse=',')]
-            write.table(edges,
-                        ## C code uses %s.%06d.dat
-                        file=
-                        paste('replay', prefix,
-                              paste('p', pl$duration$powerLimit[1], 'w', sep=''),
-                              sprintf('%06d', r),
-                              'dat', sep='.'),
-                        quote=F, sep='\t', row.names=F)
-          })
-      })
-      NULL
-    })
-  result
+  nnapply(names(resultsFixedLPMerged), .writeILP_prefix)
 }
 
 if(!interactive()){
