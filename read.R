@@ -885,11 +885,17 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
 
   ## For the vertex frame, column 1 is the vertex name.
   ##vertices = x[, list(name, size, dest, src, tag, comm, hash, vertex)]
-  vertices = x[, list(name, rank, hash, vertex, reqs)]
+  vertices = x[, list(name, start, rank, hash, vertex, reqs)]
+
+  # for collective vertices, set start time to the last arrival time
+  vertices[, start := max(.SD$start), by=vertex]
+  
   vertices$name = paste(vertices$name, vertices$rank)
   setnames(vertices, 'name', 'label')
   vertices$rank = NULL
   setcolorder(vertices, c('vertex', setdiff(names(vertices), 'vertex')))
+  
+  ## remove duplicate vertex entries by vertex id
   setkey(vertices, vertex)
   vertices = unique(vertices)
 

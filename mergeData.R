@@ -9,6 +9,12 @@ source('./util.R')
 
 require('data.table')
 
+isTraining = function(entry){
+  cols = c('gmpi_replay', 'gmpi_replay_file', 'powerLimit', 'powerBalancing')
+  cols = intersect(cols, names(entry))
+  return(all(sapply(cols, function(col) is.na(entry[[col]]))))
+}
+
 getEntryData = function(entry){
   filename = file.path(entry$path, 'merged.Rsave')
   ## Does merged data exist?  If not, merge it.
@@ -737,7 +743,7 @@ go = function(force=F){
 
   load('mergedEntries.Rsave', envir=.GlobalEnv)
   ##! remove runs with turboboost
-  entries = entries[cpuFreq != 2601000]
+  entries = entries[cpuFreq != 2601000 | is.na(cpuFreq)]
   if(!nrow(entries)){
     cat('no entries!\n')
     return()
@@ -775,47 +781,60 @@ go = function(force=F){
     merged <- mergeConfs(entry, entries)
     cat(entry$key, 'Done merging configurations\n')
     cat(entry$key, 'merge time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    startTime = Sys.time()
-    cat(entry$key, 'Reducing configurations\n')
-    merged$key = entry$key
-    reduced <- reduceConfs(merged)
-    rm(merged)
-    cat(entry$key, 'Done reducing configurations\n')
-    cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    startTime = Sys.time()
-    ##powerStats(reduced$edges)
-    ##p = powerTime(reduced$sched, rbind(reduced$vertices, reduced$slackVertices))
+    if(isTraining(entry)){
+      startTime = Sys.time()
+      cat(entry$key, 'Reducing configurations\n')
+      merged$key = entry$key
+      reduced <- reduceConfs(merged)
+      rm(merged)
+      cat(entry$key, 'Done reducing configurations\n')
+      cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+      startTime = Sys.time()
+      ##powerStats(reduced$edges)
+      ##p = powerTime(reduced$sched, rbind(reduced$vertices, reduced$slackVertices))
+      
+      setkey(reduced$edges, e_uid)
+      setkey(reduced$edges_inv, e_uid)
+      reduced$maxPower =
+        sum(reduced$edges[,list(e_uid, power)][,.SD[which.max(power)],
+                                               by=e_uid][reduced$edges_inv[,
+                                                 list(e_uid, rank)]][,
+                                                                     .SD[which.max(power)],
+                                                                     by=rank]$power)
+      
+      ## this is non-slack power; slack edges are not present in reduced$edges.
+      reduced$minPower =
+        sum(reduced$edges[,list(e_uid, power)][,.SD[which.min(power)],
+                                               by=e_uid][reduced$edges_inv[,
+                                                 list(e_uid, rank)]][,
+                                                                     .SD[which.max(power)],
+                                                                     by=rank]$power)
+      cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+      startTime = Sys.time()
+      cat(entry$key, 'Saving\n')
+      save(measurementCols, reduced, entrySpace, countedEntryspace,
+           entryCols, entries, confSpace, confCols,
+           entry, missingConfs,
+           file=filename)
+      cat(entry$key, 'Done saving\n')
+      cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
 
-    setkey(reduced$edges, e_uid)
-    setkey(reduced$edges_inv, e_uid)
-    reduced$maxPower =
-      sum(reduced$edges[,list(e_uid, power)][,.SD[which.max(power)],
-                                             by=e_uid][reduced$edges_inv[,
-                                               list(e_uid, rank)]][,
-                                                                   .SD[which.max(power)],
-                                                                   by=rank]$power)
-
-    ## this is non-slack power; slack edges are not present in reduced$edges.
-    reduced$minPower =
-      sum(reduced$edges[,list(e_uid, power)][,.SD[which.min(power)],
-                                             by=e_uid][reduced$edges_inv[,
-                                               list(e_uid, rank)]][,
-                                                                   .SD[which.max(power)],
-                                                                   by=rank]$power)
-    cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    startTime = Sys.time()
-    cat(entry$key, 'Saving\n')
-    save(measurementCols, reduced, entrySpace, countedEntryspace,
-         entryCols, entries, confSpace, confCols,
-         entry, missingConfs,
-         file=filename)
-    cat(entry$key, 'Done saving\n')
-    cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
-    startTime = Sys.time()
-    cat(entry$key, 'Writing timeslices\n')
-    writeSlices(reduced)
-    cat(entry$key, 'Done writing timeslices\n')
-    cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+### only write timeslice files for training runs, not replayed, power-capped, or power-balanced
+      startTime = Sys.time()
+      cat(entry$key, 'Writing timeslices\n')
+      writeSlices(reduced)
+      cat(entry$key, 'Done writing timeslices\n')
+      cat(entry$key, 'timeslice write time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    } else { ## non-training entry
+      startTime = Sys.time()
+      cat(entry$key, 'Saving\n')
+      save(measurementCols, merged, entrySpace, countedEntryspace,
+           entryCols, entries, confSpace, confCols,
+           entry, missingConfs,
+           file=filename)
+      cat(entry$key, 'Done saving\n')
+      cat(entry$key, 'save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+    }
     ##return(reduced)
     NULL
   }

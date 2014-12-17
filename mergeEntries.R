@@ -60,7 +60,11 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
   entries[, SLURM_NNODES:=NULL]
   
   entryCols <<-
-    intersect(c('ranksPerNode','ranks','command'),
+    intersect(c('ranksPerNode','ranks','command',
+###!@todo this assumes gmpi_replay_file is only set if gmpi_replay is set
+                'gmpi_replay','gmpi_replay_file',
+                'powerLimit', 'powerBalancing'
+                ),
               names(entries))
   confCols <<-
     intersect(
@@ -77,12 +81,12 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
   countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
                                 by=entryCols]
 
-  sel = which(!complete.cases(entrySpace))
-  if(length(sel)){
-    cat('Removing', length(sel), 'cases:\n')
-    print(countedEntryspace[sel])
-  }
-  entrySpace <<- na.omit(entrySpace)
+  ## sel = which(!complete.cases(entrySpace))
+  ## if(length(sel)){
+  ##   cat('Removing', length(sel), 'cases:\n')
+  ##   print(countedEntryspace[sel])
+  ## }
+  ## entrySpace <<- na.omit(entrySpace)
 
   entrySpace$key <<- unlist(rowApply(entrySpace, toKey))
   setkeyv(entrySpace, entryCols)
