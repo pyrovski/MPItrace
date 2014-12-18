@@ -544,8 +544,8 @@ accumulateCutStarts = function(x, orderedCuts){
     lapply(resultsILPMerged, lapply, accumulateCutStarts, orderedCuts)
   resultsFixedLPMerged =
     lapply(resultsFixedLPMerged, lapply, accumulateCutStarts, orderedCuts)
-  ##assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
-  ##assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
+  assign('resultsILPMerged', resultsILPMerged, envir=.GlobalEnv)
+  assign('resultsFixedLPMerged', resultsFixedLPMerged, envir=.GlobalEnv)
   cols =
     c('src', 's_uid', 'd_uid', 'dest', 'type', 'start', 'weight',
       ## name
