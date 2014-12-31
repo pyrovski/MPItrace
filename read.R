@@ -793,10 +793,20 @@ messageDeps = function(x){
       errMsg = paste('mismatched send-receive:\n',
         paste(names(mids), collapse='\t'), '\n',
         paste(mids[mid], collapse='\t'))
-      stop(errMsg)
+      warning(errMsg, immediate.=T)
     }
 
-    if(nrow(sends) & nrow(recvs)){
+    ##sends = sends[complete.cases(sends)]
+    ##recvs = recvs[complete.cases(recvs)]
+
+    if(nrow(sends) > 0 && nrow(recvs) > 0){
+      if(nrow(sends) != nrow(recvs)){
+        warning('sends and receives for mid ', mid, ' differ in length; sends: ', nrow(sends), ', receives: ', nrow(recvs), '\n', immediate.=T)
+        minRows = min(nrow(sends), nrow(recvs))
+        sends = sends[1:minRows]
+        recvs = recvs[1:minRows]
+      }
+      
       result =
         lapply(1:nrow(sends), function(row)
                f_noSideEffects(sends[row], recvs[row]))
@@ -827,10 +837,12 @@ messageDeps = function(x){
 
   ## find dest vertices for nonblocking receives
   setkey(x, uid)
-  missingVertices = srDeps[is.na(dest_vertex), which=T]
-  if(length(missingVertices)){
-    dest_uids = srDeps[missingVertices, dest]
-    srDeps[missingVertices, dest_vertex := x[J(dest_uids)]$vertex]
+  if(nrow(srDeps)){
+    missingVertices = srDeps[is.na(dest_vertex), which=T]
+    if(length(missingVertices)){
+      dest_uids = srDeps[missingVertices, dest]
+      srDeps[missingVertices, dest_vertex := x[J(dest_uids)]$vertex]
+    }
   }
   
   if(debug)
@@ -839,27 +851,29 @@ messageDeps = function(x){
 
   setkey(x, uid)
   ## find indices with multiple references
-  setkey(srDeps, dest)
-  destTable = table(srDeps[, dest])
-  multDests = as.numeric(names(destTable[destTable > 1]))
+  if(nrow(srDeps)){
+    setkey(srDeps, dest)
+    destTable = table(srDeps[, dest])
+    multDests = as.numeric(names(destTable[destTable > 1]))
 
-  ## complete the indices with single references
-  singleDests = as.numeric(names(destTable[destTable == 1]))
-  deps = vector('list', nrow(x))
-  if(length(singleDests))
-    deps[x[J(singleDests), which=T]] = srDeps[J(singleDests)]$src ## uid
+    ## complete the indices with single references
+    singleDests = as.numeric(names(destTable[destTable == 1]))
+    deps = vector('list', nrow(x))
+    if(length(singleDests))
+      deps[x[J(singleDests), which=T]] = srDeps[J(singleDests)]$src ## uid
 
-  ## complete the indices with multiple references
-  if(length(multDests)){
-    sel = x[J(multDests), which=T]
-    deps[sel] =
-      mapply(c, deps[sel],
-             lapply(multDests,
-                    function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    ## complete the indices with multiple references
+    if(length(multDests)){
+      sel = x[J(multDests), which=T]
+      deps[sel] =
+        mapply(c, deps[sel],
+               lapply(multDests,
+                      function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    }
+    x$deps = sapply(deps, paste, collapse=',')
+    rm(deps)
   }
-  x$deps = sapply(deps, paste, collapse=',')
-  rm(deps)
-    
+  
   if(debug)
     cat('Done matching messages\n')
 
