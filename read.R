@@ -884,6 +884,8 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
                         power=pkg_w+dram_w,s_uid=uid,flags)],
             x[sel-1,list(src=vertex)],
             x[sel+1,list(dest=vertex, d_uid=uid)])
+    if(all(c('c0', 'effFreq') %in% names(x)))
+      result = cbind(result, x[sel, list(c0, effFreq)])
     result[, rank:=r]
   }
   compEdges = .rbindlist(mclapply(unique(x[, rank]), f))

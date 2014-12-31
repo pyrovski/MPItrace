@@ -1,3 +1,25 @@
+.compareMerged = function(entrySpace){
+  entrySpace[,
+             list(powerLimit, globalLimit = as.numeric(powerLimit) * ranks,
+                  key,
+                  minTime = lapply(key, function(key){
+                    e = new.env()
+                    load(envir=e,
+                         paste('mergedData', gsub('[/. ]', '_', key), 'Rsave', sep='.'))
+                    min(sapply(e$merged$vertices, function(v)
+                               v[label == 'MPI_Finalize 0', start]))}))]
+}
+
+compareReplays = function(entrySpace){
+  .compareMerged(entrySpace[!is.na(gmpi_replay) &
+                            !is.na(gmpi_replay_file) &
+                            is.na(powerLimit)])
+}
+
+comparePowerLimits = function(entrySpace){
+  .compareMerged(entrySpace[!is.na(powerLimit)])
+}
+
 ##!@todo finish
 mcdtby = function(x, chunkBy, by, f, SDcols='all'){
   cores = getOption('mc.cores')
