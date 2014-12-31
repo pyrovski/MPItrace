@@ -173,19 +173,29 @@ activePower =
 ## per socket
 idlePower = list(E5_2670 = 19.1)
 
-plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank)){
+plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=F){
   b = lapply(ranks, function(r)
     ## skip MPI_Init
     tail(a$runtimes[rank == r], -1)[, list(start, power=pkg_w)]
     )
-  maxTime = max(sapply(b, function(x) x[, max(start)]))
-  maxPower = max(sapply(b, function(x) x[, max(power)]))
-  plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower))
-  mapply(function(x, col) {
+  if(!total){
+    maxTime = max(sapply(b, function(x) x[, max(start)]))
+    maxPower = max(sapply(b, function(x) x[, max(power)]))
+    plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower))
+  }
+  b = mapply(function(x, col) {
     s = stepfun(c(x$start, tail(x$start, 1) + 1e-6), c(0, x$power, 0))
-    lines(s, col=col)
-    NULL
+    if(!total)
+      lines(s, col=col)
+    s
   }, b, rainbow(length(ranks)))
+  if(total){
+    times = sort(unique(unlist(lapply(b, knots))))
+    powers = as.data.table(do.call(cbind, lapply(b, function(x) x(times))))
+    powers = rowSums(powers)
+    b = stepfun(times, c(0, powers))
+    plot(b)
+  }
   NULL
 }
 
