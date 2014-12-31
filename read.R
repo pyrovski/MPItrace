@@ -173,19 +173,29 @@ activePower =
 ## per socket
 idlePower = list(E5_2670 = 19.1)
 
-plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank)){
+plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=F){
   b = lapply(ranks, function(r)
     ## skip MPI_Init
     tail(a$runtimes[rank == r], -1)[, list(start, power=pkg_w)]
     )
-  maxTime = max(sapply(b, function(x) x[, max(start)]))
-  maxPower = max(sapply(b, function(x) x[, max(power)]))
-  plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower))
-  mapply(function(x, col) {
+  if(!total){
+    maxTime = max(sapply(b, function(x) x[, max(start)]))
+    maxPower = max(sapply(b, function(x) x[, max(power)]))
+    plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower))
+  }
+  b = mapply(function(x, col) {
     s = stepfun(c(x$start, tail(x$start, 1) + 1e-6), c(0, x$power, 0))
-    lines(s, col=col)
-    NULL
+    if(!total)
+      lines(s, col=col)
+    s
   }, b, rainbow(length(ranks)))
+  if(total){
+    times = sort(unique(unlist(lapply(b, knots))))
+    powers = as.data.table(do.call(cbind, lapply(b, function(x) x(times))))
+    powers = rowSums(powers)
+    b = stepfun(times, c(0, powers))
+    plot(b)
+  }
   NULL
 }
 
@@ -784,10 +794,20 @@ messageDeps = function(x){
       errMsg = paste('mismatched send-receive:\n',
         paste(names(mids), collapse='\t'), '\n',
         paste(mids[mid], collapse='\t'))
-      stop(errMsg)
+      warning(errMsg, immediate.=T)
     }
 
-    if(nrow(sends) & nrow(recvs)){
+    ##sends = sends[complete.cases(sends)]
+    ##recvs = recvs[complete.cases(recvs)]
+
+    if(nrow(sends) > 0 && nrow(recvs) > 0){
+      if(nrow(sends) != nrow(recvs)){
+        warning('sends and receives for mid ', mid, ' differ in length; sends: ', nrow(sends), ', receives: ', nrow(recvs), '\n', immediate.=T)
+        minRows = min(nrow(sends), nrow(recvs))
+        sends = sends[1:minRows]
+        recvs = recvs[1:minRows]
+      }
+      
       result =
         lapply(1:nrow(sends), function(row)
                f_noSideEffects(sends[row], recvs[row]))
@@ -818,10 +838,12 @@ messageDeps = function(x){
 
   ## find dest vertices for nonblocking receives
   setkey(x, uid)
-  missingVertices = srDeps[is.na(dest_vertex), which=T]
-  if(length(missingVertices)){
-    dest_uids = srDeps[missingVertices, dest]
-    srDeps[missingVertices, dest_vertex := x[J(dest_uids)]$vertex]
+  if(nrow(srDeps)){
+    missingVertices = srDeps[is.na(dest_vertex), which=T]
+    if(length(missingVertices)){
+      dest_uids = srDeps[missingVertices, dest]
+      srDeps[missingVertices, dest_vertex := x[J(dest_uids)]$vertex]
+    }
   }
   
   if(debug)
@@ -830,27 +852,29 @@ messageDeps = function(x){
 
   setkey(x, uid)
   ## find indices with multiple references
-  setkey(srDeps, dest)
-  destTable = table(srDeps[, dest])
-  multDests = as.numeric(names(destTable[destTable > 1]))
+  if(nrow(srDeps)){
+    setkey(srDeps, dest)
+    destTable = table(srDeps[, dest])
+    multDests = as.numeric(names(destTable[destTable > 1]))
 
-  ## complete the indices with single references
-  singleDests = as.numeric(names(destTable[destTable == 1]))
-  deps = vector('list', nrow(x))
-  if(length(singleDests))
-    deps[x[J(singleDests), which=T]] = srDeps[J(singleDests)]$src ## uid
+    ## complete the indices with single references
+    singleDests = as.numeric(names(destTable[destTable == 1]))
+    deps = vector('list', nrow(x))
+    if(length(singleDests))
+      deps[x[J(singleDests), which=T]] = srDeps[J(singleDests)]$src ## uid
 
-  ## complete the indices with multiple references
-  if(length(multDests)){
-    sel = x[J(multDests), which=T]
-    deps[sel] =
-      mapply(c, deps[sel],
-             lapply(multDests,
-                    function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    ## complete the indices with multiple references
+    if(length(multDests)){
+      sel = x[J(multDests), which=T]
+      deps[sel] =
+        mapply(c, deps[sel],
+               lapply(multDests,
+                      function(d) srDeps[J(d)]$src), SIMPLIFY=F)
+    }
+    x$deps = sapply(deps, paste, collapse=',')
+    rm(deps)
   }
-  x$deps = sapply(deps, paste, collapse=',')
-  rm(deps)
-    
+  
   if(debug)
     cat('Done matching messages\n')
 
@@ -875,6 +899,8 @@ tableToGraph = function(x, assignments, messages, saveGraph=T, path='.'){
                         power=pkg_w+dram_w,s_uid=uid,flags)],
             x[sel-1,list(src=vertex)],
             x[sel+1,list(dest=vertex, d_uid=uid)])
+    if(all(c('c0', 'effFreq') %in% names(x)))
+      result = cbind(result, x[sel, list(c0, effFreq)])
     result[, rank:=r]
   }
   compEdges = .rbindlist(mclapply(unique(x[, rank]), f))

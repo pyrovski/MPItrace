@@ -565,6 +565,11 @@ accumulateCutStarts = function(x, orderedCuts){
 
     ## merge sched with reduced edges_inv
     sched = edges_inv[pl$edges]
+    save(sched,
+         file=
+         paste('sched', prefix,
+               paste('p', pl$duration$powerLimit[1], 'w', sep=''),
+               'Rsave', sep='.'))
 
     .writePowerTime = function(s, label){
       write.table(powerTime(s),

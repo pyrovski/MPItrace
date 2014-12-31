@@ -1,3 +1,25 @@
+.compareMerged = function(entrySpace){
+  entrySpace[,
+             list(powerLimit, globalLimit = as.numeric(powerLimit) * ranks,
+                  key,
+                  minTime = lapply(key, function(key){
+                    e = new.env()
+                    load(envir=e,
+                         paste('mergedData', gsub('[/. ]', '_', key), 'Rsave', sep='.'))
+                    min(sapply(e$merged$vertices, function(v)
+                               v[label == 'MPI_Finalize 0', start]))}))]
+}
+
+compareReplays = function(entrySpace){
+  .compareMerged(entrySpace[!is.na(gmpi_replay) &
+                            !is.na(gmpi_replay_file) &
+                            is.na(powerLimit)])
+}
+
+comparePowerLimits = function(entrySpace){
+  .compareMerged(entrySpace[!is.na(powerLimit)])
+}
+
 ##!@todo finish
 mcdtby = function(x, chunkBy, by, f, SDcols='all'){
   cores = getOption('mc.cores')
@@ -39,7 +61,10 @@ oldPowerTime = function(x){
 
 powerTime = function(edges, vertices){
   ranks = unique(edges[, rank])
+
+  ##!@todo 0 first or last?
   f = function(x) c(x, 0)
+  
   rf = function(r){
     edges = edges[rank == r & power > 0]
     ##! data.table doesn't order correctly?
@@ -79,7 +104,10 @@ powerTime = function(edges, vertices){
 
 plotPowerTime = function(pt, name){
   pdf(file=paste(name, '.pdf', sep=''))
-  s = stepfun(pt[[1]], c(pt[[2]], 0))
+
+  ##!@todo 0 first or last?
+  s = stepfun(pt[[1]], c(0, pt[[2]]))
+  
   plot(s, main=name)
   dev.off()
   NULL
@@ -336,6 +364,7 @@ getSchedule = function(edges, vertices=edges[,list(vertex=union(src,dest))],
   if(numericVertices)
     gd$vertices$name = as.numeric(gd$vertices$name)
   cat('Topological ordering\n')
+  ##!@todo cycles in the graph are bad news. This affects SMG?
   ts_order = topological.sort(g)
 
   ## cat('Vertex ancestry (for ILP taskEvent fixing)\n')
