@@ -133,7 +133,8 @@ selfLatency =
            1.414e-06
          else
            5.768e-05 + 1.722e-10 * size
-       })
+       },
+       'mmm---tiny' = latency[['merlot']])
 
 #e = new.env()
 #load('acceptablePowerModel_conf_only.Rsave', envir=e)
