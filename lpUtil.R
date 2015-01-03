@@ -517,7 +517,6 @@ accumulateCutStarts = function(x, orderedCuts){
   origPrefix = sub('_fixedLP', '', prefix)
   eReduced = new.env()
   load(paste('../mergedData', origPrefix, 'Rsave', sep='.'), envir=eReduced)
-
   
   ranks = unique(eReduced$reduced$assignments$rank)
   ## eRuntimes = new.env()
@@ -589,6 +588,10 @@ accumulateCutStarts = function(x, orderedCuts){
     setkey(sched, src)
     schedDest = data.table::copy(sched)
     setkey(schedDest, dest)
+    if(nrow(schedDest[J(2)]) != length(ranks)){
+      stop("MPI_Finalize anomaly found in LP schedule  for prefix ", prefix, "!\n")
+    }
+
 
     .writeILP_prefix_powerLimit_rank = function(r){
       ## rank == dest rank for messages
@@ -651,9 +654,6 @@ accumulateCutStarts = function(x, orderedCuts){
 
       ##!@todo UMT is missing MPI_Finalize; WTF?
       ## handle finalize
-      if(!nrow(schedDest[dest==2 && rank==r])){
-        stop("No MPI_Finalize found in LP schedule for rank ", r, " of prefix ", prefix, "!\n")
-      }
       edges =
         .rbindlist(
           list(
@@ -707,8 +707,8 @@ accumulateCutStarts = function(x, orderedCuts){
                         'dat', sep='.'),
                   quote=F, sep='\t', row.names=F)
     }
-
-
+    
+    ##debug(.writeILP_prefix_powerLimit_rank)
     lapply(ranks, .writeILP_prefix_powerLimit_rank)
   }
 
