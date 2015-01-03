@@ -133,7 +133,8 @@ selfLatency =
            1.414e-06
          else
            5.768e-05 + 1.722e-10 * size
-       })
+       },
+       'mmm---tiny' = latency[['merlot']])
 
 #e = new.env()
 #load('acceptablePowerModel_conf_only.Rsave', envir=e)
@@ -267,8 +268,8 @@ readAll = function(path='.'){
   ranks = as.numeric(t(unname(as.data.frame(strsplit(files,'[.]'))))[,2])
   assignments =
     .rbindlist(lapply(files, function(file)
-                     read.table(file.path(path, file), h=T,
-                                stringsAsFactors=F)))
+      read.table(file.path(path, file), h=T,
+                 stringsAsFactors=F)))
   return(list(runtimes=runtimes, assignments=assignments, uidsByReq=uidsByReq,
               newComms=newComms)) }
 
@@ -563,7 +564,8 @@ deps = function(x){
       
       ## replace newly unified parentComms in commTable
       commMap =
-        unique(commTable[!is.na(unifiedComm) & !done, list(rank, childComm, unifiedComm)])
+        unique(commTable[!is.na(unifiedComm) & !done,
+                         list(rank, childComm, unifiedComm)])
       setnames(commMap, names(commMap), c('rank', 'comm', 'unifiedComm'))
       setkey(commMap, rank, comm)
 
