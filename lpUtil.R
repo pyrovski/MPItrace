@@ -648,15 +648,19 @@ accumulateCutStarts = function(x, orderedCuts){
 
       edges[,mseq:=min(mseq),by=list(vertex)]
       edges = edges[order(mseq, seq)]
-      
+
+      ##!@todo UMT is missing MPI_Finalize; WTF?
       ## handle finalize
-      
+      if(!nrow(schedDest[dest==2 && rank==r])){
+        stop("No MPI_Finalize found in LP schedule for rank ", r, " of prefix ", prefix, "!\n")
+      }
       edges =
         .rbindlist(
           list(
             edges, vertices[, vertexCols,with=F][cbind(
                                            schedDest[dest==2 & rank==r, cols, with=F],
-                                           d_rank=as.integer(NA), s_rank=as.integer(NA), mseq=max(edges$mseq) + 1, seq=1)]))
+                                           d_rank=as.integer(NA), s_rank=as.integer(NA),
+                                           mseq=max(edges$mseq) + 1, seq=1)]))
       
       edges[, c('seq', 'vertex', 's_uid') := NULL]
       edges[, c('src', 'dest'):=as.integer(NA)]
