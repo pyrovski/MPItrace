@@ -197,7 +197,7 @@ plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=
     b = stepfun(times, c(0, powers))
     plot(b)
   }
-  NULL
+  b
 }
 
 
