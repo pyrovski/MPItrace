@@ -45,6 +45,22 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
     as.data.frame(cbind(name = names(entry),
                         class = sapply(entry, class)),
                   stringsAsFactors=F))))
+
+  ## add gmpi_replay, gmpi_replay_file, powerLimit, (powerBalancing?) to classes
+  cols =
+    c('ranksPerNode','ranks','command',
+###!@todo this assumes gmpi_replay_file is only set if gmpi_replay is set
+      'gmpi_replay','gmpi_replay_file',
+      'powerLimit'
+      #, 'powerBalancing'
+      )
+  colClasses = list(ranksPerNode='numeric', ranks='numeric', command='character',
+    gmpi_replay='numeric', gmpi_replay_file='character', powerLimit='numeric')
+    #powerBalancing='numeric')
+  for(col in cols)
+    if(!col %in% classes$name)
+      classes = rbind(classes, data.table(name=col, class=colClasses[[col]]))
+  
   setkey(classes)
   entries <<- rbindlist(mclapply(entries, function(entry){
     missing = setdiff(classes$name, names(entry))
@@ -58,13 +74,9 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
   
   entries[, ranksPerNode:=ceiling(ranks/SLURM_NNODES)]
   entries[, SLURM_NNODES:=NULL]
-  
+
   entryCols <<-
-    intersect(c('ranksPerNode','ranks','command',
-###!@todo this assumes gmpi_replay_file is only set if gmpi_replay is set
-                'gmpi_replay','gmpi_replay_file',
-                'powerLimit', 'powerBalancing'
-                ),
+    intersect(cols,
               names(entries))
   confCols <<-
     intersect(
@@ -78,8 +90,8 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
   setkey(entrySpace)
   setkeyv(entries, entryCols)
 
-  countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
-                                by=entryCols]
+  ## countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
+  ##                               by=entryCols]
 
   ## sel = which(!complete.cases(entrySpace))
   ## if(length(sel)){
