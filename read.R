@@ -178,7 +178,7 @@ idlePower = list(E5_2670 = 19.1)
 plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=F, plot=T){
   b = lapply(ranks, function(r)
     ## skip MPI_Init
-    tail(runtimes[rank == r], -1)[, list(start, power=pkg_w)]
+    tail(runtimes[rank == r][order(start)], -1)[, list(start, power=pkg_w)]
     )
   if(!total){
     maxTime = max(sapply(b, function(x) x[, max(start)]))
