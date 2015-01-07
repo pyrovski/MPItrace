@@ -49,6 +49,8 @@ getEntryData = function(entry){
 
 mergeConfs = function(conf, entries){
   print(conf)
+  entries_date = data.table::copy(entries)
+  setkey(entries_date, date)
   setkeyv(entries, entryCols)
   cat(length(entries[conf, which=T]), ' entries\n')
   result = rowApply(entries[conf], getEntryData)
@@ -151,6 +153,16 @@ mergeConfs = function(conf, entries){
   ##   stop(conf$key, ' failed UID check')
   ## }
 
+  ##!@todo merge powerSummary(powerTime) from each run if this is a
+  ##!replay or power-limited set
+  ## get power limits from entries table.
+  powerLimits =
+    entries_date[J(names(result)), list(date, powerLimit=powerLimit*ranks)]
+  powerLimits[is.na(powerLimit), powerLimit := Inf]
+  powerSummaries = mapply(function(x, powerLimit){
+    powerSummary(s=x$powerTime, powerLimit=powerLimit)
+  }, result, powerLimits$powerLimit, SIMPLIFY=F)
+
   rm(result)
 
   list(##runtimes=runtimes,
@@ -159,7 +171,8 @@ mergeConfs = function(conf, entries){
        compEdges=compEdges,
        collectives=collectives,
        vertices=vertices,
-       globals=globals)
+       globals=globals,
+       powerSummaries=powerSummaries)
 }
 
 ## combine within confCols combinations. This will combine multiple
@@ -795,6 +808,7 @@ go = function(force=F){
       cat(entry$key, 'Reducing configurations\n')
       merged$key = entry$key
       reduced <- reduceConfs(merged)
+      reduced$powerSummaries = merged$powerSummaries
       rm(merged)
       cat(entry$key, 'Done reducing configurations\n')
       cat(entry$key, 'reduce time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')

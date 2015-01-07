@@ -174,19 +174,22 @@ activePower =
 ## per socket
 idlePower = list(E5_2670 = 19.1)
 
-plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=F){
+## this assumes the input comes directly from read.R
+plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=F, plot=T){
   b = lapply(ranks, function(r)
     ## skip MPI_Init
-    tail(a$runtimes[rank == r], -1)[, list(start, power=pkg_w)]
+    tail(runtimes[rank == r], -1)[, list(start, power=pkg_w)]
     )
   if(!total){
     maxTime = max(sapply(b, function(x) x[, max(start)]))
     maxPower = max(sapply(b, function(x) x[, max(power)]))
-    plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower))
+    if(plot)
+      plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower), main='power vs time',
+           xlab='time (s)', ylab='power (w)')
   }
   b = mapply(function(x, col) {
     s = stepfun(c(x$start, tail(x$start, 1) + 1e-6), c(0, x$power, 0))
-    if(!total)
+    if(!total && plot)
       lines(s, col=col)
     s
   }, b, rainbow(length(ranks)))
@@ -195,11 +198,12 @@ plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=
     powers = as.data.table(do.call(cbind, lapply(b, function(x) x(times))))
     powers = rowSums(powers)
     b = stepfun(times, c(0, powers))
-    plot(b)
+    if(plot)
+      plot(b)
   }
+  ##!@todo compact with RLE like in powerTime()
   b
 }
-
 
 readGlobal = function(path = '.', filename = "glog.dat"){
   source(file.path(path, filename))
@@ -1107,7 +1111,9 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F, ...){
   messages = b2$messages
   b2 = b2$runtimes
   rm(b)
-  ##if(!saveResult)
+  pt = plotMultiplePowerTime(b2, plot=F, total=T)
+  cat('powerTime time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
+  startTime = Sys.time()
   g = tableToGraph(b2, assignments=assignments, messages=messages, path=path)
   ##else
   ##  g = NA
@@ -1128,7 +1134,8 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F, ...){
          assignments = assignments,
          comms = comms,
          globals=globals,
-         collectives = collectives)
+         collectives = collectives,
+         powerTime = pt)
   if(saveResult){
     with(result, save(list=ls(), file=file.path(path,name)))
     cat('save time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')

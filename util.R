@@ -1,13 +1,58 @@
+nameColApply = function(x, f, nameName='name'){
+  n = names(x)
+  x = .rbindlist(lapply(x, f))
+  x[[nameName]] = n
+  x
+}
+
+powerSummary = function(
+  s, powerLimit=Inf, timeThreshold = .01, powerPercentage = 5)
+{
+  times = knots(s)
+  dTimes = diff(times)
+  powers = head(s(times), -1)
+  totalTime = max(times)
+  overages =
+    powers > (100+powerPercentage)/100 * powerLimit &
+      dTimes > timeThreshold
+  overagesTable = data.table(power=powers[overages], duration=dTimes[overages])
+  list(overages = overagesTable,
+       averagePower = sum(dTimes * powers) / totalTime,
+       overageTimeFraction = overagesTable[, sum(duration)]/totalTime,
+       powerLimit=powerLimit)
+}
+
 .compareMerged = function(entrySpace){
-  entrySpace[,
-             list(powerLimit, globalLimit = as.numeric(powerLimit) * ranks,
-                  key,
-                  minTime = lapply(key, function(key){
-                    e = new.env()
-                    load(envir=e,
-                         paste('mergedData', gsub('[/. ]', '_', key), 'Rsave', sep='.'))
-                    min(sapply(e$merged$vertices, function(v)
-                               v[label == 'MPI_Finalize 0', start]))}))]
+  setkey(entries, date)
+  f = function(key){
+    e = new.env()
+    load(envir=e,
+         paste('mergedData', gsub('[/. ]', '_', key), 'Rsave', sep='.'))
+    dates = names(e$merged$vertices)
+    
+    powerSummaries =
+      nameColApply(e$merged$powerSummaries, function(ps)
+                   as.data.table(ps[c('averagePower',
+                                      'overageTimeFraction'
+                                      #'powerLimit'
+                                      )]),
+                   nameName='date')
+    
+    result =
+      nameColApply(e$merged$vertices, function(v)
+                   v[label == 'MPI_Finalize 0',
+                     list(duration=start)],
+                   nameName = 'date')
+    setkey(result, date)
+    result = result[entries[, list(date, OMP_NUM_THREADS)]]
+    setkey(powerSummaries, date)
+    result[powerSummaries]
+  }
+  result = entrySpace[,
+    list(powerLimit, globalLimit = as.numeric(powerLimit) * ranks,
+         key,
+         stats = lapply(key, f))]
+  result
 }
 
 compareReplays = function(entrySpace){
