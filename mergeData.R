@@ -589,18 +589,20 @@ writeSlices = function(x, sliceDir='csv', doReachable=F){
   ## ancestors, descendants
   g = graph.data.frame(x$schedule[, list(src, dest)])
   vertexNames = V(g)$name
-## ### Ancestors of each vertex
-##   ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
-##   schedVertices$ancestors = ancestors[order(as.numeric(vertexNames))]
-## ### Descendants of each vertex
-##   descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
-##   schedVertices$descendants = descendants[order(as.numeric(vertexNames))]
-##   rm(ancestors, descendants)
-##   reachable = neighborhood(g, order=vcount(g), mode='out')
-##   names(reachable) = vertexNames
-##   reachable =
-##     napply(reachable, function(x, name)
-##            Filter(function(x) x != name, vertexNames[x]))
+### ### Ancestors of each vertex
+###   ancestors = neighborhood.size(g, order=vcount(g), mode='in') - 1
+###   schedVertices$ancestors = ancestors[order(as.numeric(vertexNames))]
+### ### Descendants of each vertex
+###   descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
+###   schedVertices$descendants = descendants[order(as.numeric(vertexNames))]
+###   rm(ancestors, descendants)
+###   reachable = neighborhood(g, order=vcount(g), mode='out')
+###   names(reachable) = vertexNames
+###   reachable =
+###     napply(reachable, function(x, name)
+###            Filter(function(x) x != name, vertexNames[x]))
+  schedVertices$ancestors = 0
+  schedVertices$descendants = 0
   rm(vertexNames)
   
   graphFile = file.path(sliceDir, paste(confName, '.graph.dot', sep=''))
