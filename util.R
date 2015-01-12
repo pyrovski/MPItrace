@@ -1,3 +1,57 @@
+confPlot = function(key, top=1){
+  setkey(entrySpace, key)
+  row = entrySpace[key]
+  commonNames = intersect(names(entries), names(entrySpace))
+  row = row[, commonNames, with=F]
+  setkey(row)
+  setkeyv(entries, names(row))
+  dates = entries[row, date]
+
+  setkey(entries, date)
+
+  results = nnapply(dates, mc=T, function(d){
+    e = new.env()
+    load(file.path(d, 'merged.Rsave'), envir=e)
+    e = e$compEdges
+    entry = entries[J(d)]
+    e$OMP_NUM_THREADS = entry[, OMP_NUM_THREADS]
+    e$cpuFreq = entry[, cpuFreq]
+    e
+  })
+  results = .rbindlist(results)
+
+  # get edge with highest mean time
+  b = head(tail(results[,lapply(.SD, mean),by=list(s_uid, d_uid)][order(weight)], top), 1)
+  b = b[, list(s_uid, d_uid)]
+  setkey(b)
+  setkeyv(results, names(b))
+  a = results[b]
+  cols = rainbow(8, v=.8)
+  ##cols = brewer.pal(8,"RdYlBu")
+  ##cols = heat.colors(8)
+  a[, col := cols[OMP_NUM_THREADS]]
+  plot(-100, -100, xlab='Power (w)',
+       ylab='Normalized Performance', main='Normalized Performance vs. Power',
+       ylim=c(0, 1.0), xlim=c(0, max(a$power)))
+  p = ..pareto(a)
+  p
+  lines(p$power, p$weight / max(p$weight), col='black', lwd=3)
+  points(a$power, a$weight / max(a$weight), col=a$col, pch=19)
+  legend('bottomleft',
+         ## legend=c(1:8, 'Convex\nPareto'),
+         ## col=c(cols, 'black'),
+         ## pch=c(rep(19, 8), NA),
+         ## lwd=c(rep(NA, 8), 3),
+         legend=paste(1:8, 'threads'),
+         col=cols,
+         pch=19,
+         ncol=1)
+  legend('topright',
+         legend='Convex Pareto Frontier',
+         lwd=3,
+         col='black')
+}
+
 nameColApply = function(x, f, nameName='name'){
   n = names(x)
   x = .rbindlist(lapply(x, f))
