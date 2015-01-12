@@ -596,11 +596,13 @@ writeSlices = function(x, sliceDir='csv', doReachable=F){
 ###   descendants = neighborhood.size(g, order=vcount(g), mode='out') - 1
 ###   schedVertices$descendants = descendants[order(as.numeric(vertexNames))]
 ###   rm(ancestors, descendants)
-###   reachable = neighborhood(g, order=vcount(g), mode='out')
-###   names(reachable) = vertexNames
-###   reachable =
-###     napply(reachable, function(x, name)
-###            Filter(function(x) x != name, vertexNames[x]))
+  if(doReachable){
+    reachable = neighborhood(g, order=vcount(g), mode='out')
+    names(reachable) = vertexNames
+    reachable =
+      napply(reachable, function(x, name)
+             Filter(function(x) x != name, vertexNames[x]))
+  }
   schedVertices$ancestors = 0
   schedVertices$descendants = 0
   rm(vertexNames)
