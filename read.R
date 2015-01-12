@@ -181,8 +181,8 @@ plotMultiplePowerTime = function(runtimes, ranks = unique(runtimes$rank), total=
     tail(runtimes[rank == r][order(start)], -1)[, list(start, power=pkg_w)]
     )
   if(!total){
-    maxTime = max(sapply(b, function(x) x[, max(start)]))
-    maxPower = max(sapply(b, function(x) x[, max(power)]))
+    maxTime = max(sapply(b, function(x) x[, max(start, na.rm=T)]))
+    maxPower = max(sapply(b, function(x) x[, max(power, na.rm=T)]))
     if(plot)
       plot(0,0, xlim=c(0,maxTime), ylim=c(0,maxPower), main='power vs time',
            xlab='time (s)', ylab='power (w)')
