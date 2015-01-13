@@ -1,4 +1,4 @@
-confPlot = function(key, top=1){
+confPlot = function(key, top=1, pdf=F){
   setkey(entrySpace, key)
   row = entrySpace[key]
   commonNames = intersect(names(entries), names(entrySpace))
@@ -30,6 +30,8 @@ confPlot = function(key, top=1){
   ##cols = brewer.pal(8,"RdYlBu")
   ##cols = heat.colors(8)
   a[, col := cols[OMP_NUM_THREADS]]
+  if(pdf)
+    pdf('confPlot.pdf', width=5, height=5)
   plot(-100, -100, xlab='Power (w)',
        ylab='Normalized Performance', main='Normalized Performance vs. Power',
        ylim=c(0, 1.0), xlim=c(0, max(a$power)))
@@ -50,6 +52,8 @@ confPlot = function(key, top=1){
          legend='Convex Pareto Frontier',
          lwd=3,
          col='black')
+  if(pdf)
+    dev.off()
 }
 
 nameColApply = function(x, f, nameName='name'){
@@ -157,12 +161,13 @@ oldPowerTime = function(x){
           power=rowSums(as.data.table(lapply(steps, function(s) s(times))))))
   return(powers)
 }
-
+  
+## assumes "power" column holds power information
 powerTime = function(edges, vertices){
   ranks = unique(edges[, rank])
 
   ##!@todo 0 first or last?
-  f = function(x) c(x, 0)
+  f = function(x) c(0, x)
   
   rf = function(r){
     edges = edges[rank == r & power > 0]
