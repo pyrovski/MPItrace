@@ -37,7 +37,7 @@ confPlot = function(key, top=1, pdf=F){
        ylim=c(0, 1.0), xlim=c(0, max(a$power)))
   p = ..pareto(a)
   p
-  lines(p$power, p$weight / max(p$weight), col='black', lwd=3)
+  lines(p$power, p$weight / max(p$weight), col='black', lwd=4)
   points(a$power, a$weight / max(a$weight), col=a$col, pch=19)
   legend('bottomleft',
          ## legend=c(1:8, 'Convex\nPareto'),
@@ -50,7 +50,7 @@ confPlot = function(key, top=1, pdf=F){
          ncol=1)
   legend('topright',
          legend='Convex Pareto Frontier',
-         lwd=3,
+         lwd=4,
          col='black')
   if(pdf)
     dev.off()
