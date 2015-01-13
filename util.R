@@ -33,7 +33,7 @@ confPlot = function(key, top=1, pdf=F){
   if(pdf)
     pdf('confPlot.pdf', width=5, height=5)
   plot(-100, -100, xlab='Power (w)',
-       ylab='Normalized Performance', main='Normalized Performance vs. Power',
+       ylab='Normalized Time', main='Normalized Time vs. Power',
        ylim=c(0, 1.0), xlim=c(0, max(a$power)))
   p = ..pareto(a)
   p
