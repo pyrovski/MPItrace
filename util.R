@@ -30,8 +30,11 @@ confPlot = function(key, top=1, pdf=F){
   ##cols = brewer.pal(8,"RdYlBu")
   ##cols = heat.colors(8)
   a[, col := cols[OMP_NUM_THREADS]]
-  if(pdf)
+ # oldPar = par()
+  if(pdf){
     pdf('confPlot.pdf', width=5, height=5)
+    par(mar=c(5,4,4,0)+.1)
+  }
   plot(-100, -100, xlab='Power (w)',
        ylab='Normalized Time', main='Normalized Time vs. Power',
        ylim=c(0, 1.0), xlim=c(0, max(a$power)))
@@ -54,6 +57,7 @@ confPlot = function(key, top=1, pdf=F){
          col='black')
   if(pdf)
     dev.off()
+#  par(oldPar)
 }
 
 nameColApply = function(x, f, nameName='name'){
