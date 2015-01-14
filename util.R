@@ -44,7 +44,7 @@ confPlot = function(key, top=1, pdf=F){
          ## col=c(cols, 'black'),
          ## pch=c(rep(19, 8), NA),
          ## lwd=c(rep(NA, 8), 3),
-         legend=paste(1:8, 'threads'),
+         legend=paste(1:8, c('thread', rep('threads', 7))),
          col=cols,
          pch=19,
          ncol=1)
