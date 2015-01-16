@@ -1,6 +1,9 @@
 dots=$(wildcard *.dot)
-targets=$(patsubst %.dot,%.dot.pdf,$(dots))
+targets=$(patsubst %.dot,%.dot.png,$(dots))
 all: $(targets)
 
-%.dot.pdf: %.dot
-	dot -Tpdf -O $^
+#%.dot.pdf: %.dot
+#	dot -Tpdf -O $^
+
+%.dot.png: %.dot
+	dot -Tpng -O $^
