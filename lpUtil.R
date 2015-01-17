@@ -11,6 +11,34 @@ source('~/local/bin/pbutils.R')
 ilpFileTypes = c('duration', 'edges')
 fixedLPFileTypes = c('duration', 'edges')
 
+solveLP = function(nodePowerLimits, forceLocal=F, fixedOnly=T, roundMode='step'){
+  load('../mergedEntries.Rsave')
+  rowApply(entrySpace, function(row){
+    cuts =
+      sub('.edges.csv','',
+          Sys.glob(paste(gsub('[/. ]', '_', row$key),
+                         '*.edges.csv', sep='')))
+    ilpCuts = grep('ILP', cuts, v=T)
+    fixedCuts = setdiff(cuts, ilpCuts)
+    rm(cuts)
+    lapply(fixedCuts, function(cut){
+      lapply(nodePowerLimits, function(pl) {
+        edgesFile = paste(cut, '.p', format(pl, nsmall=1), 'w.edges', sep='')
+        cutEdges = paste(cut, '.edges.csv', sep='')
+        if(file.exists(edgesFile) && file.info(edgesFile)$mtime > file.info(cutEdges)$mtime)
+          return(NULL)
+        command =
+          paste('prefix=', cut, ' powerLimit=', pl*row$ranks,
+                if(forceLocal) ' FORCELOCAL=1',
+                ' roundMode=', roundMode,
+                ' ./fixed.sh', sep='')
+        print(command)
+        system(command, intern=T)
+      })
+    })
+  })
+}
+
 readLP = function(filename){
   a = fromJSON(file=filename)
 

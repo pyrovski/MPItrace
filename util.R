@@ -118,9 +118,13 @@ powerSummary = function(
 }
 
 compareReplays = function(entrySpace){
-  .compareMerged(entrySpace[!is.na(gmpi_replay) &
-                            !is.na(gmpi_replay_file) &
-                            is.na(powerLimit)])
+  result =
+    .compareMerged(entrySpace[!is.na(gmpi_replay) &
+                              !is.na(gmpi_replay_file) &
+                              is.na(powerLimit)])
+  result = cbind(result, rbindlist(lapply(result[, stats], function(x) x[which.min(duration)])))
+  result[, globalLimit := as.numeric(gsub('.*p(.*)w.*','\\1',key))]
+  result
 }
 
 comparePowerLimits = function(entrySpace){
