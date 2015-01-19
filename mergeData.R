@@ -839,7 +839,7 @@ go = function(force=F){
       cat(entry$key, 'power stats time: ', difftime(Sys.time(), startTime, units='secs'), 's\n')
       startTime = Sys.time()
       cat(entry$key, 'Saving\n')
-      save(measurementCols, reduced, entrySpace, countedEntryspace,
+      save(measurementCols, reduced, entrySpace, countedEntrySpace,
            entryCols, entries, confSpace, confCols,
            entry, missingConfs,
            file=filename)
@@ -855,7 +855,7 @@ go = function(force=F){
     } else { ## non-training entry
       startTime = Sys.time()
       cat(entry$key, 'Saving\n')
-      save(measurementCols, merged, entrySpace, countedEntryspace,
+      save(measurementCols, merged, entrySpace, countedEntrySpace,
            entryCols, entries, confSpace, confCols,
            entry, missingConfs,
            file=filename)
