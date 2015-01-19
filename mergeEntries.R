@@ -90,24 +90,24 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
   setkey(entrySpace)
   setkeyv(entries, entryCols)
 
-  ## countedEntryspace <<- entries[entrySpace, list(count=nrow(.SD)),
+  ## countedEntrySpace <<- entries[entrySpace, list(count=nrow(.SD)),
   ##                               by=entryCols]
 
   ## sel = which(!complete.cases(entrySpace))
   ## if(length(sel)){
   ##   cat('Removing', length(sel), 'cases:\n')
-  ##   print(countedEntryspace[sel])
+  ##   print(countedEntrySpace[sel])
   ## }
   ## entrySpace <<- na.omit(entrySpace)
 
   entrySpace$key <<- unlist(rowApply(entrySpace, toKey))
   setkeyv(entrySpace, entryCols)
 
-  countedEntryspace <<-
+  countedEntrySpace <<-
     entries[entrySpace, list(count=nrow(.SD)), by=entryCols]
 
   save(file=outFile, entries, entryCols, confCols, entrySpace,
-       countedEntryspace)
+       countedEntrySpace)
 }
 
 #if(!interactive())
