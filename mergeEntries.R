@@ -62,15 +62,17 @@ mergeEntries = function(inList = readLines(f_args[1]), outFile = 'mergedEntries.
       classes = rbind(classes, data.table(name=col, class=colClasses[[col]]))
   
   setkey(classes)
-  entries <<- rbindlist(mclapply(entries, function(entry){
+  f = function(entry){
     missing = setdiff(classes$name, names(entry))
-    for(col in missing)
-      ##    entry[[col]] = as(NA, classes[J(col)]$class)
-      entry[[col]] = as(NA, classes[J(col), class])
+    if(length(missing))
+      for(col in missing)
+        ##    entry[[col]] = as(NA, classes[J(col)]$class)
+        entry[[col]] = as(NA, classes[J(col)][, class])
     entry = as.data.table(entry)
     setcolorder(entry, classes$name)
     entry
-  }))
+  }
+  entries <<- rbindlist(mclapply(entries, f))
   
   entries[, ranksPerNode:=ceiling(ranks/SLURM_NNODES)]
   entries[, SLURM_NNODES:=NULL]
