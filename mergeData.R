@@ -566,7 +566,7 @@ writeSlices = function(x, sliceDir='csv', doReachable=F){
       filenameFixed =
         file.path(sliceDir, paste(sliceNameFixed, '.Rsave', sep=''))
       if(!file.exists(filenameFixed))
-         file.symlink(base, filenameFixed)
+        file.symlink(base, filenameFixed)
     }
   }
   ## after the fixed-order LP, we don't need this anymore.
@@ -758,6 +758,15 @@ writeSlices = function(x, sliceDir='csv', doReachable=F){
   } else ## no cuts
     writeSlice(result, sliceTime = 'ILP.cut_1', x$schedule, schedVertices,
                reachable=reachable)
+  
+  ## write list of cuts for this prefix
+  {
+    ilpName = file.path(sliceDir, paste(confName, '_ILP.cuts.csv', sep=''))
+    fixedName = file.path(sliceDir, paste(confName, '_fixedLP.cuts.csv', sep=''))
+    write(cuts, file=ilpName, ncolumns=1)
+    file.symlink(paste(confName, '_ILP.cuts.csv', sep=''), fixedName)
+  }
+  
   confName
 }
 

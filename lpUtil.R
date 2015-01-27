@@ -265,9 +265,11 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
           unique(sub(paste('.*', cutPattern, paste('(', plPattern, ')', sep=''),
                            'duration$', sep='[.]'),
                      '\\1', files)))
-    if(length(powerLimitInt))
-      powerLimits =
-        intersect(as.numeric(powerLimits), as.numeric(powerLimitInt))
+
+    ##!@todo this needs to be modified to reformat the power limits with a trailing zero
+    ## if(length(powerLimitInt))
+    ##   powerLimits =
+    ##     intersect(as.numeric(powerLimits), as.numeric(powerLimitInt))
     
     cuts =
       sort(as.numeric(
@@ -275,61 +277,48 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
             unique(sub(paste(prefix, paste('(',cutPattern, ')', sep=''),
                              plPattern, 'duration$', sep='[.]'),
                        '\\1', files)))))
+
+    expectedCuts = read.table(paste(prefix, '.cuts.csv', sep=''), h=F)[[1]]
     
-    nnapply(powerLimits, function(powerLimit)
-            nnapply(cuts,
-                    function(cut){
-                      if(fixed)
-                        fileTypes = fixedLPFileTypes
-                      else
-                        fileTypes = ilpFileTypes
-                      
-                      nnapply(fileTypes, function(fileType){
-                        filename =
-                          paste(prefix, paste('cut_', cut, sep=''),
-                                paste('p', powerLimit, 'w', sep=''),
-                                fileType, sep='.')
-                        tryCatch(
-                          as.data.table(
-                            read.table(filename, h=T, sep=',', strip.white=T)),
-                          error=function(e){
-                            warning('failed to read ', filename, immediate.=T)
-                            NULL
-                          }, finally=NULL)
-                      }
-                              )
-                    },
-                    mc=T)
+    nnapply(powerLimits, function(powerLimit){
+      plPattern = paste('p', powerLimit, 'w', sep='')
+      presentCuts =
+        list.files(pattern=paste(prefix, cutPattern,
+                     plPattern,
+                     'edges$', sep='[.]'))
+      presentCuts = as.numeric(sub('.*cut_([0-9]+).*', '\\1', presentCuts))
+      
+      if(length(setdiff(expectedCuts, presentCuts))){
+        stop(prefix, 'missing cuts!\n')
+      }
+      
+      nnapply(cuts,
+              function(cut){
+                if(fixed)
+                  fileTypes = fixedLPFileTypes
+                else
+                  fileTypes = ilpFileTypes
+                
+                nnapply(fileTypes, function(fileType){
+                  filename =
+                    paste(prefix, paste('cut_', cut, sep=''),
+                          paste('p', powerLimit, 'w', sep=''),
+                          fileType, sep='.')
+                  tryCatch(
+                    as.data.table(
+                      read.table(filename, h=T, sep=',', strip.white=T)),
+                    error=function(e){
+                      warning('failed to read ', filename, immediate.=T)
+                      NULL
+                    }, finally=NULL)
+                }
+                        )
+              },
+              mc=T)
+    }
             )
   }
           )
-}
-
-## intended to process results of lpGo(mode='keepAll'), simulating some
-## runtime power balancing algorithms. This differs from powerStats()
-## because of the following:
-##
-## - timeslices have not been combined
-##
-asdf = function(ts, rankPowerLimits){
-  ## unlimited power
-  minTime = ts$edges[, .SD[which.min(weight)], by=e_uid]
-  
-  minPower = ts$edges[, .SD[which.min(power)], by=e_uid]
-  ## pl1: uniform power, maxConf per edge -> RAPL
-  ##
-  ## pl2: uniform power, intelligent conf selection (already
-  ## implemented in powerStats())
-  ##
-  ## pl3: nonuniform power, maxConf per edge -> RAPL
-  ##
-  ## pl4: nonuniform power, intelligent conf selection
-  ##
-
-  pl2 =
-    ts$edges[, .SD[power <= rankPowerLimits[rank] |
-                   power == min(power)][which.min(weight)], by=e_uid]
-  list(minTime=minTime, minPower=minPower, pl2=pl2, vertices=ts$vertices)
 }
 
 ##!@todo this function assumes that we don't alter the schedule from
