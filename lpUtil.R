@@ -437,6 +437,8 @@ loadAndMergeILP = function(...){
 
   ## retain only complete cuts
   ##!@todo get list of expected cuts, warn if any missing
+  
+  
   f = function(x, depth){
     if(depth == 1){
       if(any(sapply(x, is.null)))
