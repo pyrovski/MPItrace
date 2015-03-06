@@ -218,7 +218,7 @@ readRuntime = function(filename, maxRank, path='.'){
 ###!@todo if the disk quota is exceeded, the runtime files will exist
 ###!but be empty.
   firstLine = strsplit(readLines(filename, n=1),'\t')[[1]]
-  a = data.table(read.table(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
+  a = data.table(fread(filename,h=T,stringsAsFactors=F,colClasses=colClasses))
   a[size == MPI_UNDEFINED,]$size = NA
   a[dest == MPI_UNDEFINED,]$dest = NA
 
