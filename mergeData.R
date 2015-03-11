@@ -71,7 +71,8 @@ mergeConfs = function(conf, entries){
     errMsg = 'Runs differ in number of edges!'
     cat(errMsg, '\n')
     edgeTable = sort(table(sapply(result, function(r) nrow(r$compEdges))))
-    maxEdgeCount = names(edgeTable[1])
+    
+    maxEdgeCount = names(tail(edgeTable,1))
     keep = sapply(result, function(r) nrow(r$compEdges) == maxEdgeCount)
     warning('removing ', length(which(!keep)), ' experiments', immediate.=T)
     result = result[keep]
