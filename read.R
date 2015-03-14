@@ -1148,3 +1148,44 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F, ...){
       return(result)
   }
 }
+
+### Note: this function changes vertex numbers!
+schedFromRun = function(compEdges, messageEdges, vertices){
+  edges =
+    rbind(
+      compEdges[,
+                list(
+                  weight, power,
+                  OMP_NUM_THREADS=bitwShiftR(bitwAnd(flags, flagBits$threads), 4),
+                  src, dest, c0, effFreq, s_rank=rank, d_rank=rank)],
+      messageEdges[,
+                   list(
+                     weight, power=as.numeric(NA),
+                     OMP_NUM_THREADS=as.numeric(NA), src, dest,
+                     c0=as.numeric(NA), effFreq=as.numeric(NA),
+### for messages, 's_rank' is the sending rank, and 'd_rank' is the
+### receiving rank
+                     s_rank, d_rank=rank)])
+  vertices = vertices[, list(vertex, label, start, hash)]
+
+  ## generate e_uids and get start times for edges
+  setkey(vertices, vertex)
+  setkey(edges, src)
+  edges = edges[vertices[, list(vertex, start)]][order(start, s_rank)]
+  edges[, e_uid:=1:nrow(edges)]
+
+  ## renumber vertices
+  vertices$newVertex = 1:nrow(vertices)
+  for(col in c('src', 'dest')){
+    setkeyv(edges, col)
+    toMatch = unique(Filter(Negate(is.na), edges[[col]]))
+    edges[vertices[J(toMatch), list(vertex, newVertex)], c(col) := list(newVertex)]
+  }
+  vertices[, c('vertex', 'newVertex') := list(newVertex, NULL)]
+  
+  ## get the schedule and critical path
+  sched = getSchedule(edges, vertices)
+
+  sched
+}
+
