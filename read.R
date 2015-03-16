@@ -1151,21 +1151,29 @@ run = function(path='.', saveResult=F, name='merged.Rsave', noReturn=F, ...){
 
 ### Note: this function changes vertex numbers!
 schedFromRun = function(compEdges, messageEdges, vertices){
-  edges =
-    rbind(
-      compEdges[,
-                list(
-                  weight, power,
-                  OMP_NUM_THREADS=bitwShiftR(bitwAnd(flags, flagBits$threads), 4),
-                  src, dest, c0, effFreq, s_rank=rank, d_rank=rank)],
-      messageEdges[,
-                   list(
-                     weight, power=as.numeric(NA),
-                     OMP_NUM_THREADS=as.numeric(NA), src, dest,
-                     c0=as.numeric(NA), effFreq=as.numeric(NA),
+  compEdges =
+    compEdges[,
+              list(
+                weight, power,
+                OMP_NUM_THREADS=bitwShiftR(bitwAnd(flags, flagBits$threads), 4),
+                src, dest, c0, effFreq, s_rank=rank, d_rank=rank)]
+
+  if(is.null(messageEdges) || is.na(messageEdges)){
+    edges = compEdges
+  } else {
+    edges =
+      rbind(
+        compEdges,
+        messageEdges[,
+                     list(
+                       weight, power=as.numeric(NA),
+                       OMP_NUM_THREADS=as.numeric(NA), src, dest,
+                       c0=as.numeric(NA), effFreq=as.numeric(NA),
 ### for messages, 's_rank' is the sending rank, and 'd_rank' is the
 ### receiving rank
-                     s_rank, d_rank=rank)])
+                       s_rank, d_rank=rank)])
+  }
+    
   vertices = vertices[, list(vertex, label, start, hash)]
 
   ## generate e_uids and get start times for edges
@@ -1187,5 +1195,30 @@ schedFromRun = function(compEdges, messageEdges, vertices){
   sched = getSchedule(edges, vertices)
 
   sched
+}
+
+plotSchedule = function(sched, pdf=T, startTime=0, endTime=max(sched$edges[, start+weight])){
+  if(pdf){
+    pdf('critical_path.pdf', width=5, height=5)
+  } else
+    dev.new()
+
+  plot(0,0, xlim=c(startTime, endTime), ylim=c(0,max(b2$s_rank)),
+       pch=NA)
+  edges = sched$edges[start >= startTime & start + weight <= endTime]
+  setkey(edges, e_uid)
+  l =
+    edges[J(sched$critPath),
+          rbind(.SD[,list(start, rank=s_rank)],
+                .SD[, list(start=start+weight, rank=d_rank)]),by=e_uid]
+  l_start = edges[,list(start, rank=s_rank)]
+  l_end = edges[, list(start=start+weight, rank=d_rank)]
+
+  arrows(l_start$start, l_start$rank, l_end$start, l_end$rank, lwd=3, angle=10, length=.05)
+  lines(l[,list(start,rank)], lwd=3, col='red')
+  
+  if(pdf){
+    dev.off()
+  }
 }
 
