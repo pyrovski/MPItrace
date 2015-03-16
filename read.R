@@ -1203,7 +1203,7 @@ plotSchedule = function(sched, pdf=T, startTime=0, endTime=max(sched$edges[, sta
   } else
     dev.new()
 
-  plot(0,0, xlim=c(startTime, endTime), ylim=c(0,max(b2$s_rank)),
+  plot(0,0, xlim=c(startTime, endTime), ylim=c(0,max(sched$edges$s_rank)),
        pch=NA)
   edges = sched$edges[start >= startTime & start + weight <= endTime]
   setkey(edges, e_uid)
