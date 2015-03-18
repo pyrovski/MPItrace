@@ -755,6 +755,31 @@ writeILPSchedules = function(){
   nnapply(names(resultsFixedLPMerged), .writeILP_prefix)
 }
 
+summarizeSchedules = function(){
+  napply(
+    resultsFixedLPMerged,
+    function(results, name){
+      prefix = name
+      napply(
+        results,
+        function(plResults, name){
+          powerLimit = name
+          powerTime = 
+            fread(paste('powerTime', prefix, 'all',
+                        paste('p',
+                              ###!@todo this should agree with .writePowerTime()
+                              as.integer(powerLimit),
+                              'w', sep=''),
+                        'dat', sep='.'))
+          ## plot(stepfun(powerTime$start, c(powerTime$power,0)))
+          meanPower =
+            sum(powerTime[, diff(start) * tail(power, -1)])/tail(powerTime[, start],1)
+          plResults$edges[, list(duration=max(start+weight),
+                                 meanPower = meanPower,
+                                 maxPower = max(powerTime$power))]
+        })})
+}
+
 if(!interactive()){
 ##  loadAndMergeLP()
   loadAndMergeILP()
