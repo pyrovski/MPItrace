@@ -646,7 +646,9 @@ accumulateCutStarts = function(x, orderedCuts){
         messageRecvEdges[, src := NULL]
 ### reduceConfs produces one message edge for each send/recv
 ### pair, but we want a separate row for both send and recv
-        messageEdges = .rbindlist(list(messageRecvEdges, cbind(messageSendEdges, o_d_uid=as.numeric(NA))))
+        messageEdges =
+          .rbindlist(list(messageRecvEdges,
+                          cbind(messageSendEdges, o_d_uid=as.numeric(NA))))
         messageEdges[,mseq:=max(s_uid, o_d_uid, na.rm=T),by=vertex]
         messageEdges[, o_d_uid := NULL]
         
@@ -685,14 +687,17 @@ accumulateCutStarts = function(x, orderedCuts){
       edges =
         .rbindlist(
           list(
-            edges, vertices[, vertexCols,with=F][cbind(
-                                           schedDest[dest==2 & rank==r, cols, with=F],
-                                           d_rank=as.integer(NA), s_rank=as.integer(NA),
-                                           mseq=max(edges$mseq) + 1, seq=1)]))
+            edges,
+            vertices[, vertexCols,
+                     with=F][cbind(
+                       schedDest[dest==2 & rank==r, cols, with=F],
+                       d_rank=as.integer(NA), s_rank=as.integer(NA),
+                       mseq=max(edges$mseq) + 1, seq=1)]))
       
       edges[, c('seq', 'vertex', 's_uid') := NULL]
       edges[, c('src', 'dest'):=as.integer(NA)]
-      edges[type == 'message', c('src', 'dest') := list(as.integer(s_rank), as.integer(d_rank))]
+      edges[type == 'message',
+            c('src', 'dest') := list(as.integer(s_rank), as.integer(d_rank))]
       edges[, c('d_rank', 'type') := NULL]
       if(!'size' %in% names(edges)){
         edges[, c('size', 'tag', 'comm') := as.numeric(NA)]
@@ -786,21 +791,3 @@ if(!interactive()){
   writeILPSchedules()
 }
 
-
-## match one-config tasks and two-config tasks, including schedule
-## creation for one-config tasks.
-##!@todo do we need to explicitly create slack edges? Yes.
-matchOneTwo = function(one, two){
-  one = one$edges
-  two = two$edges
-  oneSched = rebuildScheduleWithSlack(one)
-  one = oneSched$sched
-  
-  oneConf = one$edges[power > 0 & weight > 0, list(ts,orig_e_uid,power,weight)]
-  twoConf = two[power > 0 & weight > 0, list(ts,orig_e_uid,power,weight)]
-  setkey(oneConf, ts, orig_e_uid)
-  setkey(twoConf, ts, orig_e_uid)
-  d = oneConf[twoConf[,list(ts,orig_e_uid, p2=power, w2=weight)]]
-  d[, c('pr','wr') := list(power/p2,weight/w2)]
-  list(one=one, oneConf=oneConf, twoConf = twoConf, d=d)
-}
