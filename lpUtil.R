@@ -238,7 +238,7 @@ lpGo = function(...){
   nnapply(commands, readCommandResults, ...)
 }
 
-ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
+ilpGo = function(pattern='.*', powerLimitMin=0, ...){
   ## get all files, then filter by prefix, then by power limit and cut
   load('../mergedEntries.Rsave', envir=.GlobalEnv)
   cutPattern = 'cut_[0-9]+'
@@ -267,9 +267,11 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
                      '\\1', files)))
 
     ##!@todo this needs to be modified to reformat the power limits with a trailing zero
-    ## if(length(powerLimitInt))
-    ##   powerLimits =
-    ##     intersect(as.numeric(powerLimits), as.numeric(powerLimitInt))
+    if(powerLimitMin > 0){
+      powerLimitFloat = as.numeric(powerLimits)
+      cat('ignoring power limits: ', powerLimits[powerLimitFloat < powerLimitMin], '\n')
+      powerLimits = powerLimits[powerLimitFloat >= powerLimitMin]
+    }
     
     cuts =
       sort(as.numeric(
@@ -278,7 +280,7 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
                              plPattern, 'duration$', sep='[.]'),
                        '\\1', files)))))
 
-    expectedCuts = read.table(paste(prefix, '.cuts.csv', sep=''), h=F)[[1]]
+    expectedCuts = as.integer(read.table(paste(prefix, '.cuts.csv', sep=''), h=F)[[1]])
     
     nnapply(powerLimits, function(powerLimit){
       plPattern = paste('p', powerLimit, 'w', sep='')
@@ -286,10 +288,13 @@ ilpGo = function(pattern='.*', powerLimitInt=c(), ...){
         list.files(pattern=paste(prefix, cutPattern,
                      plPattern,
                      'edges$', sep='[.]'))
-      presentCuts = as.numeric(sub('.*cut_([0-9]+).*', '\\1', presentCuts))
+      presentCuts = as.integer(sub('.*cut_([0-9]+).*', '\\1', presentCuts))
       
       if(length(setdiff(expectedCuts, presentCuts))){
-        stop(prefix, 'missing cuts!\n')
+        errMsg =
+          paste(prefix, '@', powerLimit, 'w:\nmissing cuts!\n',
+                paste(setdiff(expectedCuts, presentCuts), collapse=' '), sep='')
+        stop(errMsg)
       }
       
       nnapply(cuts,
