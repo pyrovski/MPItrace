@@ -47,3 +47,6 @@ rapl_clamp*
 *.log
 log
 errLog
+.Rproj.user
+.Rhistory
+.RData
